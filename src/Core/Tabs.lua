@@ -257,6 +257,16 @@ local function Apply(frame)
         end
     end
 
+    -- The strip the tabs sit in has art of its own, and now that the window's
+    -- background reaches up behind it, anything left alive there shows. Guarded
+    -- against UIParent: an undocked tab is parented to its own chat frame, and
+    -- a stray dock arrangement must never have us sweeping the whole UI.
+    local dock = tab:GetParent()
+    if dock and dock ~= frame and dock ~= _G.UIParent then
+        Skin.KillChrome(dock)
+    end
+    if _G.GeneralDockManager then Skin.KillChrome(_G.GeneralDockManager) end
+
     LockAlpha(tab)
     if Tabs:Paint(tab) and not painting then RelayoutDock() end
 end

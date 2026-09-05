@@ -225,6 +225,7 @@ local function NewChatFrame(index, windowName)
     for _, layer in ipairs({ "BACKGROUND", "BORDER", "BORDER", "ARTWORK" }) do
         tab._regions[#tab._regions + 1] = NewTexture(layer)
     end
+    tab._height = 24
     tab.Text = NewTexture("OVERLAY", "FontString")
     tab.Text._text = windowName
 
@@ -373,6 +374,8 @@ PC.Config = {
     maxLines = 1000,
     styleTabs = true,
     tabFontSize = 12,
+    tabsInside = true,
+    tabStripHeight = 0,
     tabUppercase = true,
     tabUnderline = true,
     tabTextColor = { r = 0.580, g = 0.580, b = 0.580 },
@@ -436,7 +439,7 @@ PC.Channels:Initialize()
 local loginCalls = Stubs.TotalCalls()
 
 assert(PC.Frames:Count() == 3, "the sweep adopted " .. PC.Frames:Count() .. " windows, expected 3")
-assert(chatFrames[1].peaversBox, "ChatFrame1 was never skinned")
+assert(chatFrames[1].peaversPanel, "ChatFrame1 was never skinned")
 assert(chatTabs[1].peaversUnderline, "the tab was never restyled")
 assert(chatFrames[1].editBox.peaversBox, "the edit box was never skinned")
 assert(chatFrames[1].peaversCopyButton, "the copy button was never built")

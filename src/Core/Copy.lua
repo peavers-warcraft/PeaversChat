@@ -270,9 +270,19 @@ local function Apply(frame)
         frame.peaversCopyButton = button
     end
 
+    -- Inside the tab strip when there is one, which is where the window's
+    -- background now reaches; above the frame when there is not, because the
+    -- alternative is sitting on top of the first line of chat.
+    local strip = PC.Skin.StripHeight and PC.Skin.StripHeight(frame) or 0
+    local pad = cfg.padding or 0
+
     local button = frame.peaversCopyButton
     button:ClearAllPoints()
-    button:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", (cfg.padding or 0), (cfg.padding or 0) + 3)
+    if strip > 0 then
+        button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, strip - 3)
+    else
+        button:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad + 3)
+    end
     button:SetShown(cfg.enabled and cfg.copyButton and true or false)
 end
 

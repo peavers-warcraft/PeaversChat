@@ -64,6 +64,12 @@ local PC_DEFAULTS = {
     ----------------------------------------------------------------------------
     styleTabs = true,
     tabFontSize = 12,
+
+    -- The window's background reaches up over the tab strip, so the tabs sit
+    -- inside the box rather than balanced on top of it. 0 measures how far the
+    -- tabs actually reach; anything else overrides that measurement.
+    tabsInside = true,
+    tabStripHeight = 0,
     tabUppercase = true,
     tabUnderline = true,
     tabTextColor = { r = 0.580, g = 0.580, b = 0.580 },

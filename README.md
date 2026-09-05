@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 103.1 KB | 128 KB | pass |
+| Packaged size | 110.4 KB | 128 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -42,10 +42,10 @@ Scenarios driven against the real addon source, outside the game:
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
 | chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the URL filter is pure string work and never touches a widget |
-| switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 496 calls to skin every window at login, once |
+| switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 523 calls to skin every window at login, once |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>2,765 lines of Lua · 103.1 KB packaged · no bundled libraries</sub>
+<sub>2,944 lines of Lua · 110.4 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
@@ -53,7 +53,7 @@ The zeroes are the point, so they are worth explaining:
 
 - **A chat message costs nothing.** The URL filter is pure string work, and it bails on a plain substring search before doing any pattern matching unless the message contains a dot or an at-sign. It never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
 - **Nothing runs per frame.** There is no `OnUpdate` anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved.
-- **The skin is built once.** Five textures per window: one fill and four hairline edges, created the first time the window is seen and afterwards only recoloured.
+- **The skin is built once.** One backdrop frame per window carrying five textures — a fill and four hairline edges — created the first time the window is seen and afterwards only recoloured and re-anchored.
 - **A hidden button costs one event handler.** Buttons are hidden by an `OnShow` hook rather than a poll, so the cost lands only when the client was going to show one anyway.
 
 The recurring cost that is not zero is repainting the tab row when you click a
@@ -65,6 +65,7 @@ than anybody switches tabs.
 <!-- peavers:features -->
 - A flat black chat window with a 1px hairline border, matching the rest of the Peavers UI
 - Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading
+- Tabs sit inside the window: the background reaches up over the tab strip rather than stopping underneath it
 - Tabs stay readable instead of fading out when the mouse is elsewhere
 - Clickable URLs, with a matcher careful enough not to turn "ok.thanks" into a link
 - A copy button on every chat window, and a copy window that strips colours, icons and link wrappers back out

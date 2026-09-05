@@ -237,7 +237,35 @@ function ConfigUI:BuildTabsPage(parentFrame)
     y = afterCase
 
     local _, afterUnderline = Toggle(parentFrame, "Underline the tab you are reading", "tabUnderline", y, indent, width, true)
-    y = afterUnderline - 4
+    y = afterUnderline
+
+    local _, afterInside = Toggle(parentFrame, "Draw the background behind the tabs", "tabsInside", y, indent, width, true)
+    y = afterInside - 4
+
+    local stripHeight = W:CreateSlider(parentFrame, "Tab strip height", {
+        min = 0, max = 48, step = 1,
+        value = PC.Config.tabStripHeight or 0,
+        width = width,
+        format = function(v)
+            if v <= 0 then return "Auto" end
+            return string.format("%dpx", v)
+        end,
+        onChange = function(value)
+            PC.Config.tabStripHeight = value
+            Apply()
+        end,
+    })
+    stripHeight:SetPoint("TOPLEFT", indent, y)
+    y = y - 56
+
+    local insideNote = W:CreateLabel(parentFrame,
+        "Auto measures how far the tabs actually reach above the window, which " ..
+            "is the right answer unless Blizzard has moved the dock. Nudge it if " ..
+            "the box sits proud of the tabs or clips them.",
+        { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
+    insideNote:SetPoint("TOPLEFT", indent, y)
+    insideNote:SetWidth(width)
+    y = y - 44
 
     local tabFontSize = W:CreateSlider(parentFrame, "Tab font size", {
         min = 8, max = 20, step = 1,
