@@ -56,28 +56,43 @@ local function Specifiers(source)
     return count
 end
 
---- Swap the text inside the first [...] for the abbreviation, leaving the
---- hyperlink wrapper and the format placeholders untouched.
+--- Swap the bracketed channel word for its abbreviation.
 ---
---- The specifier check is not paranoia, it is the whole reason this function is
---- allowed to exist. These strings are consumed by string.format inside the
---- client's own message handler, and the bracket does not always contain a
---- literal word: a locale, or a channel whose name varies, can put a %s in
---- there. Replace that bracket and the string now takes one fewer argument than
---- the caller passes - which does not error, it silently shifts every remaining
---- argument one place left, so the player's name lands where the channel went
---- and the message lands where the name went. Worse, an argument that shifts
---- onto a %s can be a value the client will not let Lua stringify, and then it
---- is not a wrong-looking line, it is an error thrown before the message is
---- added and a chat window that has stopped working.
+--- Safe by construction rather than by inspection, because these strings are
+--- consumed by string.format inside the client's own message handler and this
+--- addon cannot see what the client shipped in any given locale. Three things
+--- have to hold before a rewrite is allowed, and any one of them failing means
+--- that channel simply keeps Blizzard's wording:
 ---
---- Returning nil here means "this one keeps Blizzard's wording", which is a
---- visible cost of nothing much.
+---  1. The bracket holds literal text. If it holds a format specifier then the
+---     client is filling that bracket in at message time, and replacing it
+---     deletes an argument the caller is still going to pass.
+---  2. Nothing formatted comes before it. A bracket after the first specifier
+---     is not the channel - it is something the client already substituted, a
+---     bracketed player name in some locales - and rewriting it corrupts the
+---     line.
+---  3. The rewrite consumes exactly as many arguments as the original.
+---
+--- What happens when this is wrong is worth stating, because it is not a
+--- cosmetic bug. string.format does not complain about a missing specifier: it
+--- silently shifts every later argument one place left, so the name lands where
+--- the channel went and the message is dropped off the end. And an argument
+--- that shifts onto a %s can be a value the client will not let Lua stringify,
+--- which throws inside the message handler before the line is added. From the
+--- outside that looks like chat quietly not working - system messages, which
+--- take none of this path, keep arriving as though nothing were wrong.
 local function Abbreviate(source, short)
     if type(source) ~= "string" then return nil end
-    if not source:find("%[") then return nil end
 
-    local rewritten = source:gsub("%[[^%]]*%]", "[" .. short .. "]", 1)
+    local open, close, inner = source:find("%[([^%]]*)%]")
+    if not open then return nil end
+
+    if inner == "" or inner:find("%%") then return nil end
+
+    local firstSpecifier = source:find("%%")
+    if firstSpecifier and firstSpecifier < open then return nil end
+
+    local rewritten = source:sub(1, open - 1) .. "[" .. short .. "]" .. source:sub(close + 1)
     if rewritten == source then return nil end
     if Specifiers(rewritten) ~= Specifiers(source) then return nil end
 
@@ -116,6 +131,49 @@ function Channels:Restore()
     end
 
     applied = false
+end
+
+--------------------------------------------------------------------------------
+-- Showing your working
+--
+-- These rewrites happen once, at login, to globals nobody can see. When a chat
+-- line comes out wrong the first question is "what did this addon actually
+-- change?", and until there was a way to ask, the answer was to read the source
+-- and guess at the locale. This prints it.
+--------------------------------------------------------------------------------
+
+--- Pipes have to be doubled or the chat frame renders the escape sequences in
+--- the string we are trying to show somebody.
+local function Literal(source)
+    return (tostring(source):gsub("|", "||"))
+end
+
+function Channels:Report()
+    print("|cff3abdf7PeaversChat|r channel formats:")
+
+    for global, short in pairs(SHORT) do
+        local current = _G[global]
+        local original = (originals and originals[global]) or current
+
+        if type(current) ~= "string" then
+            print(("  %s - not present on this build"):format(global))
+        elseif originals and originals[global] then
+            print(("  %s -> %s"):format(global, Literal(current)))
+        else
+            local why = "unchanged"
+            local open, _, inner = original:find("%%[([^%%]]*)%%]")
+            if not open then
+                why = "left alone: no bracket to replace"
+            elseif inner == "" or inner:find("%%%%") then
+                why = "left alone: the bracket holds a format specifier, not a word"
+            elseif (original:find("%%%%") or math.huge) < open then
+                why = "left alone: something formatted comes before the bracket"
+            elseif not applied then
+                why = "abbreviation is switched off"
+            end
+            print(("  %s [%s] would be [%s]  %s"):format(global, Literal(original), short, why))
+        end
+    end
 end
 
 --------------------------------------------------------------------------------

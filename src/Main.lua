@@ -53,6 +53,13 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
             .. "Nothing this addon does now touches an incoming message. "
             .. "If chat is still wrong, it is not this.")
     end,
+    channels = function()
+        -- What was actually done to each channel format string, and why. This
+        -- is the first question when a chat line comes out wrong, and it used
+        -- to be unanswerable without reading the source and guessing at the
+        -- player's locale.
+        PC.Channels:Report()
+    end,
     buttons = function()
         -- One switch for the lot: if anything is hidden, show everything;
         -- otherwise hide everything. Two presses gets you back where you were.
@@ -98,6 +105,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
         print("  /pchat safe - Stop touching incoming messages at all")
+        print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat enable - Skin the chat windows")
         print("  /pchat disable - Hand chat back to Blizzard")
         print("  /pchat reset - Reset the chat layout, then reskin it")
