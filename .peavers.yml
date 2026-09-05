@@ -1,0 +1,19 @@
+# .peavers.yml - Addon metadata for peavers.io website
+
+# Icon to display on website
+iconType: SystemIcon
+
+# CurseForge project ID for download statistics
+curseForgeProjectId:
+
+# Member of the Ultra Performance programme: measured against a declared budget
+# on every push, with the numbers published in the README.
+ultraPerformance: true
+
+# Tags for filtering and categorization
+tags:
+  - interface
+  - chat
+  - quality-of-life
+  - performance
+  - lightweight

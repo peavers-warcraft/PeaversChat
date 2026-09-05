@@ -1,0 +1,18 @@
+package-as: PeaversChat
+
+required-dependencies:
+  - peaversconfig
+  - peaverscommons
+
+ignore:
+  - .git
+  - .github
+  - .gitignore
+  - .editorconfig
+  - .pkgmeta
+  - README.md
+  - CHANGELOG.md
+  - LICENSE
+  - local_deploy.sh
+  - local_deploy.ps1
+  - perf

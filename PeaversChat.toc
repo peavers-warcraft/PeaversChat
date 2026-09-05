@@ -1,0 +1,33 @@
+## Interface: 120001, 120005, 120007, 120100
+
+## Title: |cff3abdf7Peavers|rChat
+## Notes: A flat black chat window with clean text tabs, clickable URLs, a copy button, and every piece of Blizzard chrome around the frame made optional
+## Author: Peavers
+## Version: 1.0.0
+
+## IconTexture: Interface\AddOns\PeaversCommons\src\Media\Icon.tga
+## Category-enUS: Peavers
+
+## X-Website: https://peavers.io
+## X-Source-Code: https://github.com/peavers-warcraft/PeaversChat
+
+## Dependencies: PeaversCommons, PeaversConfig
+## SavedVariables: PeaversChatDB
+
+Changelog.lua
+
+src\Utils\Config.lua
+src\Utils\Patrons.lua
+
+src\Core\Frames.lua
+src\Core\Skin.lua
+src\Core\Tabs.lua
+src\Core\EditBox.lua
+src\Core\Buttons.lua
+src\Core\Links.lua
+src\Core\Copy.lua
+src\Core\Channels.lua
+
+src\Utils\ConfigUI.lua
+
+src\Main.lua

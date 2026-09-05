@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: PeaversChat
+  description: "A World of Warcraft addon that redraws the chat window as a flat black box with clean text tabs, turns URLs into clickable links, adds a one-click copy of the whole log, and lets every button around the frame be hidden."
+  annotations:
+    github.com/project-slug: peavers-warcraft/PeaversChat
+spec:
+  type: library
+  lifecycle: production
+  owner: peavers-warcraft
