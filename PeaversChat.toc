@@ -27,6 +27,7 @@ src\Core\Buttons.lua
 src\Core\Links.lua
 src\Core\Copy.lua
 src\Core\Channels.lua
+src\Core\Diagnostics.lua
 
 src\Utils\ConfigUI.lua
 

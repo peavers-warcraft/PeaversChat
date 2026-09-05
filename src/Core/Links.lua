@@ -107,6 +107,10 @@ function Links:Refresh()
     colorPrefix = format("|cff%02x%02x%02x",
         math.floor(c.r * 255 + 0.5), math.floor(c.g * 255 + 0.5), math.floor(c.b * 255 + 0.5))
     useBrackets = PC.Config.urlBrackets ~= false
+
+    -- A method call rather than a direct one: Sync is defined further down,
+    -- below the state it reads.
+    self:Sync()
 end
 
 local function Wrap(url)
@@ -199,6 +203,7 @@ local function NoteFailure(err)
 
     if failures >= FAILURE_LIMIT and not surrendered then
         surrendered = true
+        Links:Sync()
         print("|cff3abdf7PeaversChat|r: turning clickable URLs off - the link "
             .. "matcher errored " .. FAILURE_LIMIT .. " times and chat matters more. "
             .. "Re-enable it under /pchat once you have reported this.")
@@ -212,6 +217,7 @@ end
 
 function Links:Resume()
     failures, surrendered = 0, false
+    self:Sync()
 end
 
 local function Filter(_, _, msg, ...)
@@ -271,14 +277,48 @@ end
 -- Initialisation
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+-- Registration
+--
+-- Turning the feature off has to mean the filter is gone, not that it runs and
+-- declines to do anything. Those are the same thing right up until you are
+-- trying to work out whether this addon is what is wrong with chat: a filter
+-- that is still registered is still called on every message, still sits in the
+-- client's filter table, and still counts as an addon having touched the
+-- message. "Off" that leaves the hook installed cannot answer that question,
+-- which is exactly the question anybody typing /pchat safe is asking.
+--------------------------------------------------------------------------------
+
+local installed = false
+
+function Links:IsInstalled()
+    return installed
+end
+
+--- Install or remove the filters to match the current settings. Idempotent, and
+--- the only thing that touches the client's filter table.
+function Links:Sync()
+    local wanted = PC.Config.enabled and PC.Config.urlLinks and not surrendered
+
+    if wanted and not installed then
+        if type(_G.ChatFrame_AddMessageEventFilter) ~= "function" then return end
+        for i = 1, #EVENTS do
+            ChatFrame_AddMessageEventFilter(EVENTS[i], Filter)
+        end
+        installed = true
+    elseif not wanted and installed then
+        if type(_G.ChatFrame_RemoveMessageEventFilter) ~= "function" then return end
+        for i = 1, #EVENTS do
+            ChatFrame_RemoveMessageEventFilter(EVENTS[i], Filter)
+        end
+        installed = false
+    end
+end
+
 function Links:Initialize()
     self:Refresh()
 
     Frames:RegisterHandler("links", Apply)
-
-    for i = 1, #EVENTS do
-        ChatFrame_AddMessageEventFilter(EVENTS[i], Filter)
-    end
 
     -- Clicking the link. The client routes every hyperlink in a chat frame
     -- through SetItemRef, including types it has never heard of, which is what

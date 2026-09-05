@@ -46,12 +46,25 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Config.shortChannelNames = false
         PC.Config:Save()
 
+        -- Resume clears any earlier surrender, then Sync acts on the settings
+        -- above and takes the filters out of the client's table. Making them
+        -- inert is not the same thing and was not enough: a registered filter
+        -- is still called on every message, and "is this addon touching my
+        -- chat?" is exactly what somebody typing this wants answered.
         PC.Links:Resume()
+        PC.Links:Sync()
         PC.Channels:Restore()
 
-        Utils.Print(PC, "Clickable URLs and channel abbreviations are off. "
-            .. "Nothing this addon does now touches an incoming message. "
-            .. "If chat is still wrong, it is not this.")
+        Utils.Print(PC, string.format(
+            "Channel abbreviations restored. URL filter: %s. Nothing this addon "
+            .. "does now touches an incoming message.",
+            PC.Links:IsInstalled() and "STILL INSTALLED - this build cannot remove it"
+                or "removed from every chat event"))
+    end,
+    trace = function(rest)
+        -- Counts chat events on a frame of our own, outside the filter system,
+        -- so it reports what the client sent rather than what survived.
+        PC.Diagnostics:Toggle(rest)
     end,
     channels = function()
         -- What was actually done to each channel format string, and why. This
@@ -106,6 +119,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat buttons - Show or hide every button at once")
         print("  /pchat safe - Stop touching incoming messages at all")
         print("  /pchat channels - Show what was changed in the channel formats")
+        print("  /pchat trace - Count chat events as they arrive, then report")
         print("  /pchat enable - Skin the chat windows")
         print("  /pchat disable - Hand chat back to Blizzard")
         print("  /pchat reset - Reset the chat layout, then reskin it")

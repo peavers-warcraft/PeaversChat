@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 120.6 KB | 128 KB | pass |
+| Packaged size | 129.3 KB | 160 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -45,7 +45,7 @@ Scenarios driven against the real addon source, outside the game:
 | switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 600 calls to skin every window at login, once |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>3,173 lines of Lua · 120.6 KB packaged · no bundled libraries</sub>
+<sub>3,405 lines of Lua · 129.3 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
