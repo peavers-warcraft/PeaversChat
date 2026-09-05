@@ -24,6 +24,10 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Channels:Apply()
         PC.Buttons:Refresh()
         PC.Frames:Refresh()
+        -- Puts the URL filter back if anything had taken it out. Without this,
+        -- disable followed by enable leaves the addon looking on but with a
+        -- feature silently missing.
+        PC.Links:Sync()
         Utils.Print(PC, "Chat skinned.")
     end,
     disable = function()
@@ -32,34 +36,39 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Channels:Restore()
         PC.Frames:Restore()
         PC.Buttons:Refresh()
-        Utils.Print(PC, "Chat handed back to Blizzard.")
+        -- Off has to mean the filter is gone from the client's table, not that
+        -- it runs and declines. Same lesson as /pchat safe.
+        PC.Links:Sync()
+        Utils.Print(PC, "Chat handed back to Blizzard. /pchat enable turns it back on.")
     end,
     copy = function()
         PC.Copy:ShowChat()
     end,
     safe = function()
-        -- Everything this addon does on the message path, off in one command.
-        -- The skin and the buttons are untouched: they cannot lose a message,
-        -- and there is no point making somebody re-theme their UI to find out
-        -- whether the URL matcher is at fault. Meant to be typed mid-key.
-        PC.Config.urlLinks = false
-        PC.Config.shortChannelNames = false
-        PC.Config:Save()
+        -- A toggle, because a diagnostic you cannot undo is a trap: somebody
+        -- switches this on to answer one question and is then quietly missing
+        -- two features for the rest of the month.
+        local cfg = PC.Config
+        local goingSafe = cfg.urlLinks or cfg.shortChannelNames
 
-        -- Resume clears any earlier surrender, then Sync acts on the settings
-        -- above and takes the filters out of the client's table. Making them
-        -- inert is not the same thing and was not enough: a registered filter
-        -- is still called on every message, and "is this addon touching my
-        -- chat?" is exactly what somebody typing this wants answered.
+        cfg.urlLinks = not goingSafe
+        cfg.shortChannelNames = not goingSafe
+        cfg:Save()
+
         PC.Links:Resume()
         PC.Links:Sync()
-        PC.Channels:Restore()
+        if goingSafe then PC.Channels:Restore() else PC.Channels:Apply() end
 
-        Utils.Print(PC, string.format(
-            "Channel abbreviations restored. URL filter: %s. Nothing this addon "
-            .. "does now touches an incoming message.",
-            PC.Links:IsInstalled() and "STILL INSTALLED - this build cannot remove it"
-                or "removed from every chat event"))
+        if goingSafe then
+            Utils.Print(PC, string.format(
+                "Safe mode on. Channel abbreviations restored, URL filter %s. "
+                .. "Nothing this addon does now touches an incoming message. "
+                .. "Run /pchat safe again to put both back.",
+                PC.Links:IsInstalled() and "STILL INSTALLED - this build cannot remove it"
+                    or "removed from every chat event"))
+        else
+            Utils.Print(PC, "Safe mode off. Clickable URLs and channel abbreviations are back.")
+        end
     end,
     trace = function(rest)
         -- Counts chat events on a frame of our own, outside the filter system,
@@ -117,7 +126,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat - Open settings")
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
-        print("  /pchat safe - Stop touching incoming messages at all")
+        print("  /pchat safe - Toggle off everything that touches an incoming message")
         print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat trace - Count chat events as they arrive, then report")
         print("  /pchat enable - Skin the chat windows")
