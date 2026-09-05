@@ -37,12 +37,24 @@ local gsub = string.gsub
 --- Take the client's own escape sequences back out, keeping what they were
 --- standing in for. An item link becomes its name, a colour run becomes the text
 --- it was colouring, a texture becomes nothing at all.
+---
+--- A doubled || is a literal pipe somebody wanted to show, not the start of an
+--- escape, and it has to be got out of the way before anything else runs. Leave
+--- it in and the second pipe of a || pairs up with whatever follows: a message
+--- containing ||h closes a hyperlink that was never opened, and the |H...|h(.-)|h
+--- pattern then eats a span of text that had nothing to do with a link. That is
+--- not hypothetical - it is what mangled the output of /pchat channels, whose
+--- whole job is to print escape sequences literally.
+local PIPE = ""
+
 local function Strip(text)
+    text = gsub(text, "||", PIPE)
     text = gsub(text, "|c%x%x%x%x%x%x%x%x", "")
     text = gsub(text, "|r", "")
     text = gsub(text, "|H.-|h(.-)|h", "%1")
     text = gsub(text, "|T.-|t", "")
     text = gsub(text, "|A.-|a", "")
+    text = gsub(text, PIPE, "|")
     return text
 end
 
