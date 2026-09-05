@@ -151,20 +151,82 @@ local EVENTS = {
     "CHAT_MSG_SYSTEM",
 }
 
-local function Filter(_, _, msg, ...)
-    local cfg = PC.Config
-    if not cfg.enabled or not cfg.urlLinks then return false end
-    if type(msg) ~= "string" then return false end
-    if IsSecret and IsSecret(msg) then return false end
+--- The rewrite, on its own so the filter has something to pcall that is not a
+--- closure. Returns nil when the message is to be left exactly as it arrived.
+local function Rewrite(msg)
+    -- A secret string can be stored and passed on but not searched, and find()
+    -- on one is a hard error rather than a miss. Chat text is not restricted
+    -- data today; this is here because the day it becomes restricted is the day
+    -- this function would otherwise start eating messages.
+    if IsSecret and IsSecret(msg) then return nil end
 
     -- Cheap bail. A URL has to contain a dot or an at-sign, and a plain find is
     -- a memchr rather than a pattern match.
     if not find(msg, ".", 1, true) and not find(msg, "@", 1, true) then
-        return false
+        return nil
     end
 
     local rewritten = gsub(msg, "%S+", Linkify)
-    if rewritten ~= msg then
+    if rewritten == msg then return nil end
+    return rewritten
+end
+
+--------------------------------------------------------------------------------
+-- Failing safe
+--
+-- A message filter is the most dangerous place in the whole addon. It runs
+-- inside ChatFrame_MessageEventHandler, before the line has been added, so an
+-- error thrown here does not cost a URL - it costs the message, and every
+-- message after it for as long as the fault lasts. "Chat stopped working" is
+-- what that looks like from the outside, and it is not obvious it was an addon.
+--
+-- So the rewrite is called through pcall and, more importantly, this counts its
+-- own failures and switches itself off after a handful. An addon feature that
+-- has proven it cannot run is worth less than chat, every time. The player is
+-- told once, in plain words, rather than left with silently degraded chat.
+--------------------------------------------------------------------------------
+
+local failures = 0
+local FAILURE_LIMIT = 5
+local surrendered = false
+
+local function NoteFailure(err)
+    failures = failures + 1
+
+    if PC.Config.debugMode then
+        print("|cff3abdf7PeaversChat|r: URL filter error: " .. tostring(err))
+    end
+
+    if failures >= FAILURE_LIMIT and not surrendered then
+        surrendered = true
+        print("|cff3abdf7PeaversChat|r: turning clickable URLs off - the link "
+            .. "matcher errored " .. FAILURE_LIMIT .. " times and chat matters more. "
+            .. "Re-enable it under /pchat once you have reported this.")
+    end
+end
+
+--- Whether the filter has given up on itself, for the settings page to show.
+function Links:HasSurrendered()
+    return surrendered
+end
+
+function Links:Resume()
+    failures, surrendered = 0, false
+end
+
+local function Filter(_, _, msg, ...)
+    local cfg = PC.Config
+    if not cfg.enabled or not cfg.urlLinks or surrendered then return false end
+    if type(msg) ~= "string" then return false end
+
+    local ok, rewritten = pcall(Rewrite, msg)
+
+    if not ok then
+        NoteFailure(rewritten)
+        return false
+    end
+
+    if rewritten then
         return false, rewritten, ...
     end
 

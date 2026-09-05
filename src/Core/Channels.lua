@@ -47,14 +47,40 @@ local SHORT = {
 local originals = nil
 local applied = false
 
+--- How many format arguments a string consumes. Every % that is not an escaped
+--- %% is a specifier; counting them conservatively is the point, because this is
+--- a safety check and over-counting only ever refuses an abbreviation.
+local function Specifiers(source)
+    local literal = source:gsub("%%%%", "")
+    local _, count = literal:gsub("%%", "")
+    return count
+end
+
 --- Swap the text inside the first [...] for the abbreviation, leaving the
---- hyperlink wrapper and the %s placeholders untouched.
+--- hyperlink wrapper and the format placeholders untouched.
+---
+--- The specifier check is not paranoia, it is the whole reason this function is
+--- allowed to exist. These strings are consumed by string.format inside the
+--- client's own message handler, and the bracket does not always contain a
+--- literal word: a locale, or a channel whose name varies, can put a %s in
+--- there. Replace that bracket and the string now takes one fewer argument than
+--- the caller passes - which does not error, it silently shifts every remaining
+--- argument one place left, so the player's name lands where the channel went
+--- and the message lands where the name went. Worse, an argument that shifts
+--- onto a %s can be a value the client will not let Lua stringify, and then it
+--- is not a wrong-looking line, it is an error thrown before the message is
+--- added and a chat window that has stopped working.
+---
+--- Returning nil here means "this one keeps Blizzard's wording", which is a
+--- visible cost of nothing much.
 local function Abbreviate(source, short)
     if type(source) ~= "string" then return nil end
     if not source:find("%[") then return nil end
 
     local rewritten = source:gsub("%[[^%]]*%]", "[" .. short .. "]", 1)
     if rewritten == source then return nil end
+    if Specifiers(rewritten) ~= Specifiers(source) then return nil end
+
     return rewritten
 end
 

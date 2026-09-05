@@ -37,6 +37,22 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     copy = function()
         PC.Copy:ShowChat()
     end,
+    safe = function()
+        -- Everything this addon does on the message path, off in one command.
+        -- The skin and the buttons are untouched: they cannot lose a message,
+        -- and there is no point making somebody re-theme their UI to find out
+        -- whether the URL matcher is at fault. Meant to be typed mid-key.
+        PC.Config.urlLinks = false
+        PC.Config.shortChannelNames = false
+        PC.Config:Save()
+
+        PC.Links:Resume()
+        PC.Channels:Restore()
+
+        Utils.Print(PC, "Clickable URLs and channel abbreviations are off. "
+            .. "Nothing this addon does now touches an incoming message. "
+            .. "If chat is still wrong, it is not this.")
+    end,
     buttons = function()
         -- One switch for the lot: if anything is hidden, show everything;
         -- otherwise hide everything. Two presses gets you back where you were.
@@ -81,6 +97,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat - Open settings")
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
+        print("  /pchat safe - Stop touching incoming messages at all")
         print("  /pchat enable - Skin the chat windows")
         print("  /pchat disable - Hand chat back to Blizzard")
         print("  /pchat reset - Reset the chat layout, then reskin it")
