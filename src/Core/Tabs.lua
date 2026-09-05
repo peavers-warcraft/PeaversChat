@@ -264,6 +264,10 @@ local function Apply(frame)
     local dock = tab:GetParent()
     if dock and dock ~= frame and dock ~= _G.UIParent then
         Skin.KillChrome(dock)
+        -- Alpha is inherited, so pinning the tab alone is not enough: a faded
+        -- dock takes its tabs and the strip background down with it however
+        -- opaque they think they are.
+        LockAlpha(dock)
     end
     if _G.GeneralDockManager then Skin.KillChrome(_G.GeneralDockManager) end
 
@@ -276,6 +280,12 @@ local function Restore(frame)
     if not tab then return end
 
     UnlockAlpha(tab)
+
+    local dock = tab:GetParent()
+    if dock and dock ~= frame and dock ~= _G.UIParent then
+        UnlockAlpha(dock)
+        Skin.ReviveChrome(dock)
+    end
 
     if tab.peaversUnderline then tab.peaversUnderline:Hide() end
 

@@ -273,13 +273,23 @@ local function Apply(frame)
     -- Inside the tab strip when there is one, which is where the window's
     -- background now reaches; above the frame when there is not, because the
     -- alternative is sitting on top of the first line of chat.
-    local strip = PC.Skin.StripHeight and PC.Skin.StripHeight(frame) or 0
+    local host = PC.Skin.StripHost(frame)
+    local strip = host and PC.Skin.StripHeight(frame) or 0
     local pad = cfg.padding or 0
 
     local button = frame.peaversCopyButton
     button:ClearAllPoints()
     if strip > 0 then
         button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, strip - 3)
+
+        -- The strip's background is a texture on the dock, and this button is a
+        -- child of the chat frame, so nothing about the parentage says which
+        -- draws on top. Said explicitly here, in the dock's own strata, because
+        -- assuming it is what made the tabs disappear once already.
+        if host.GetFrameStrata then
+            button:SetFrameStrata(host:GetFrameStrata())
+            button:SetFrameLevel((host:GetFrameLevel() or 1) + 5)
+        end
     else
         button:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad + 3)
     end

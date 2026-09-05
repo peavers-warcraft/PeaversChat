@@ -8,15 +8,14 @@
 -- Three decisions here are worth explaining, because each looks like the harder
 -- option until you try the easy one.
 --
--- 1. The window's backdrop is a child frame in the BACKGROUND strata, not a
---    texture on the chat frame. A texture would have been simpler, and was, up
---    until the backdrop had to reach over the tab strip: the tabs are not the
---    chat frame's regions, so whether one landed in front of a texture or
---    behind it would come down to the frame level Blizzard happened to give the
---    dock. A frame in the lowest strata is behind both, on every build. It is
---    still parented to the chat frame, so it inherits the thing that matters -
---    a docked window that is not the selected tab is hidden, and its backdrop
---    goes with it.
+-- 1. The box is drawn with textures created directly on the frame they belong
+--    to, in the BACKGROUND draw layer, rather than with a backdrop frame behind
+--    it. A chat window is dragged, docked, resized and reparented by Blizzard's
+--    own code; a region on the frame follows all of that for free and sits
+--    behind the message text by definition. The band above the window that the
+--    tabs sit in is the same idea applied to the tabs' own parent - see the
+--    note on the strip below, and the paragraph there about what happens when
+--    you try to solve that one with frame strata instead.
 --
 -- 2. Blizzard's own chrome is hidden rather than recoloured, and hidden by
 --    shadowing each texture's Show with its Hide. Chat frames are restyled by
@@ -159,7 +158,10 @@ end
 
 --- Colour and place a box. `pad` pushes it out beyond the frame's own rect, so
 --- the message text gets some air rather than sitting against the border.
-function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBorder)
+---
+--- `skipTop` drops the top edge, for when the tab strip is drawn above and the
+--- two are meant to read as one box.
+function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBorder, skipTop)
     local box = frame.peaversBox
     if not box then return end
 
@@ -196,7 +198,7 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
 
     for _, name in ipairs({ "top", "bottom", "left", "right" }) do
         box[name]:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, 1)
-        box[name]:SetShown(showBorder and true or false)
+        box[name]:SetShown(showBorder and not (skipTop and name == "top") and true or false)
     end
 end
 
@@ -207,38 +209,39 @@ function Skin:HideBox(frame)
 end
 
 --------------------------------------------------------------------------------
--- The panel
+-- The tab strip
 --
--- The chat window's own backdrop is a frame rather than a set of textures on
--- the chat frame, for one reason: it has to reach up over the tab strip, and
--- the tabs are not the chat frame's regions. A texture on the chat frame draws
--- at the chat frame's level, so whether a tab landed in front of it or behind
--- it would come down to which frame level Blizzard happened to give the dock
--- that patch. A child frame parked in the BACKGROUND strata is behind both, by
--- definition, on every build.
+-- The band above the chat window that the tabs sit in, given the same
+-- background so the tabs read as part of the window rather than balanced on
+-- top of it.
 --
--- It is parented to the chat frame anyway, so it inherits the one piece of
--- state that matters: a docked window that is not the selected tab is hidden,
--- and its panel goes with it without anything tracking visibility.
+-- This was a child frame in the BACKGROUND strata once. It drew over the tabs,
+-- and the reason is worth writing down: strata only orders frames against other
+-- frames, and where the client puts the tab dock in that ordering is not
+-- something an addon can know. Guessing produced invisible tabs.
+--
+-- So the strip is not ordered against the tabs at all. It is drawn as textures
+-- on the tabs' own parent, and a frame's regions are always beneath its child
+-- frames - not usually, not depending on level, but by definition. The textures
+-- are anchored to the chat frame rather than to the frame that owns them, so
+-- they line up with the window while inheriting the dock's z-order and the
+-- dock's visibility.
+--
+-- Docked windows share one dock, so they share one strip, keyed off the host.
+-- They also share a rect, so whichever of them anchored it last is right for
+-- all of them.
 --------------------------------------------------------------------------------
 
-function Skin:EnsurePanel(frame)
-    if frame.peaversPanel then return frame.peaversPanel end
-    if type(frame.CreateTexture) ~= "function" then return nil end
+--- The frame the tabs are children of: the dock when docked, the chat frame
+--- itself when not. Returns nil when it is neither - UIParent, say - because
+--- putting our textures there would leak them into a frame that outlives chat.
+function Skin.StripHost(frame)
+    local tab = PC.Frames:TabFor(frame)
+    if not tab or type(tab.GetParent) ~= "function" then return nil end
 
-    local panel = CreateFrame("Frame", nil, frame)
-    panel:SetFrameStrata("BACKGROUND")
-
-    panel.bg = panel:CreateTexture(nil, "BACKGROUND")
-    panel.bg:SetAllPoints(panel)
-
-    panel.top = panel:CreateTexture(nil, "BORDER")
-    panel.bottom = panel:CreateTexture(nil, "BORDER")
-    panel.left = panel:CreateTexture(nil, "BORDER")
-    panel.right = panel:CreateTexture(nil, "BORDER")
-
-    frame.peaversPanel = panel
-    return panel
+    local host = tab:GetParent()
+    if not host or host == _G.UIParent then return nil end
+    return host
 end
 
 --- How far above the chat frame the tab strip reaches.
@@ -254,10 +257,11 @@ end
 local function StripHeight(frame)
     local cfg = PC.Config
     if not cfg.tabsInside then return 0 end
-    if cfg.tabStripHeight and cfg.tabStripHeight > 0 then return cfg.tabStripHeight end
 
     local tab = PC.Frames:TabFor(frame)
     if not tab then return 0 end
+
+    if cfg.tabStripHeight and cfg.tabStripHeight > 0 then return cfg.tabStripHeight end
 
     local tabTop, frameTop = tab:GetTop(), frame:GetTop()
     if tabTop and frameTop then
@@ -273,54 +277,63 @@ end
 
 Skin.StripHeight = StripHeight
 
---- Place and colour the panel. `topExtra` is the tab strip: the panel grows
---- upwards to swallow it, so the tabs read as part of the window rather than as
---- something balanced on top of it.
-function Skin:PaintPanel(frame, pad, topExtra, bgColor, bgAlpha, borderColor, showBg, showBorder)
-    local panel = frame.peaversPanel
-    if not panel then return end
+function Skin:EnsureStrip(host)
+    if host.peaversStrip then return host.peaversStrip end
+    if type(host.CreateTexture) ~= "function" then return nil end
+
+    local strip = {}
+    strip.bg = host:CreateTexture(nil, "BACKGROUND", nil, -8)
+    strip.top = host:CreateTexture(nil, "BACKGROUND", nil, -7)
+    strip.left = host:CreateTexture(nil, "BACKGROUND", nil, -7)
+    strip.right = host:CreateTexture(nil, "BACKGROUND", nil, -7)
+
+    for _, tex in pairs(strip) do tex.__pcOwned = true end
+
+    host.peaversStrip = strip
+    return strip
+end
+
+--- No bottom edge: the strip and the window below it are meant to read as one
+--- box, and a hairline across the middle of it would say otherwise.
+function Skin:PaintStrip(host, frame, pad, height, bgColor, bgAlpha, borderColor, showBg, showBorder)
+    local strip = host.peaversStrip
+    if not strip then return end
 
     local px = Hairline(frame)
     pad = pad or 0
-    topExtra = topExtra or 0
 
-    panel:ClearAllPoints()
-    panel:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad + topExtra)
-    panel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", pad, -pad)
+    strip.bg:ClearAllPoints()
+    strip.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad + height)
+    strip.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad)
+    strip.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
+    strip.bg:SetShown(showBg and true or false)
 
-    panel.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
-    panel.bg:SetShown(showBg and true or false)
+    strip.top:ClearAllPoints()
+    strip.top:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad + height)
+    strip.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, pad + height)
+    strip.top:SetHeight(px)
 
-    panel.top:ClearAllPoints()
-    panel.top:SetPoint("TOPLEFT", panel, "TOPLEFT")
-    panel.top:SetPoint("TOPRIGHT", panel, "TOPRIGHT")
-    panel.top:SetHeight(px)
+    strip.left:ClearAllPoints()
+    strip.left:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad + height)
+    strip.left:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, pad)
+    strip.left:SetWidth(px)
 
-    panel.bottom:ClearAllPoints()
-    panel.bottom:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT")
-    panel.bottom:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT")
-    panel.bottom:SetHeight(px)
+    strip.right:ClearAllPoints()
+    strip.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, pad + height)
+    strip.right:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad)
+    strip.right:SetWidth(px)
 
-    panel.left:ClearAllPoints()
-    panel.left:SetPoint("TOPLEFT", panel, "TOPLEFT")
-    panel.left:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT")
-    panel.left:SetWidth(px)
-
-    panel.right:ClearAllPoints()
-    panel.right:SetPoint("TOPRIGHT", panel, "TOPRIGHT")
-    panel.right:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT")
-    panel.right:SetWidth(px)
-
-    for _, name in ipairs({ "top", "bottom", "left", "right" }) do
-        panel[name]:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, 1)
-        panel[name]:SetShown(showBorder and true or false)
+    for _, name in ipairs({ "top", "left", "right" }) do
+        strip[name]:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, 1)
+        strip[name]:SetShown(showBorder and true or false)
     end
-
-    panel:Show()
 end
 
-function Skin:HidePanel(frame)
-    if frame and frame.peaversPanel then frame.peaversPanel:Hide() end
+function Skin:HideStrip(frame)
+    local host = Skin.StripHost(frame)
+    local strip = host and host.peaversStrip
+    if not strip then return end
+    for _, tex in pairs(strip) do tex:Hide() end
 end
 
 --------------------------------------------------------------------------------
@@ -371,9 +384,21 @@ local function Apply(frame)
         if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(0, 0, 0, 0) end
     end)
 
-    Skin:EnsurePanel(frame)
-    Skin:PaintPanel(frame, cfg.padding, StripHeight(frame), cfg.bgColor, cfg.bgAlpha,
-        cfg.borderColor, cfg.background, cfg.border)
+    -- The strip is only drawn when there is somewhere safe to draw it. Without
+    -- a host the window keeps its own top edge and looks like it did before the
+    -- tabs were brought inside, which is a worse look but a working one.
+    local host = Skin.StripHost(frame)
+    local strip = host and StripHeight(frame) or 0
+
+    Skin:EnsureBox(frame)
+    Skin:PaintBox(frame, cfg.padding, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
+        cfg.background, cfg.border, strip > 0)
+
+    if host then
+        Skin:EnsureStrip(host)
+        Skin:PaintStrip(host, frame, cfg.padding, strip, cfg.bgColor, cfg.bgAlpha,
+            cfg.borderColor, cfg.background and strip > 0, cfg.border and strip > 0)
+    end
 
     ApplyFont(frame)
 
@@ -390,7 +415,8 @@ local function Apply(frame)
 end
 
 local function Restore(frame)
-    Skin:HidePanel(frame)
+    Skin:HideBox(frame)
+    Skin:HideStrip(frame)
     RestoreFont(frame)
     Skin.ReviveChrome(frame)
 

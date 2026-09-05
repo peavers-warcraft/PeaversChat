@@ -221,7 +221,9 @@ local function NewChatFrame(index, windowName)
     frame.GetNumMessages = function() return #MESSAGES end
     frame.GetMessageInfo = function(_, i) return MESSAGES[((i - 1) % #MESSAGES) + 1] end
 
-    local tab = NewFrame("ChatFrame" .. index .. "Tab", index)
+    -- Parented to the dock, as the client parents a docked tab. That is what
+    -- StripHost looks for, and the strip is drawn on whatever it finds.
+    local tab = NewFrame("ChatFrame" .. index .. "Tab", index, _G.GeneralDockManager)
     for _, layer in ipairs({ "BACKGROUND", "BORDER", "BORDER", "ARTWORK" }) do
         tab._regions[#tab._regions + 1] = NewTexture(layer)
     end
@@ -343,6 +345,8 @@ _G.PeaversCommons = {
     },
 }
 
+local dock = NewFrame("GeneralDockManager", 0)
+
 local chatFrames, chatTabs = {}, {}
 for i, windowName in ipairs({ "General", "Combat Log", "Whisper" }) do
     chatFrames[i], chatTabs[i] = NewChatFrame(i, windowName)
@@ -439,7 +443,8 @@ PC.Channels:Initialize()
 local loginCalls = Stubs.TotalCalls()
 
 assert(PC.Frames:Count() == 3, "the sweep adopted " .. PC.Frames:Count() .. " windows, expected 3")
-assert(chatFrames[1].peaversPanel, "ChatFrame1 was never skinned")
+assert(chatFrames[1].peaversBox, "ChatFrame1 was never skinned")
+assert(dock.peaversStrip, "the tab strip background was never drawn on the dock")
 assert(chatTabs[1].peaversUnderline, "the tab was never restyled")
 assert(chatFrames[1].editBox.peaversBox, "the edit box was never skinned")
 assert(chatFrames[1].peaversCopyButton, "the copy button was never built")

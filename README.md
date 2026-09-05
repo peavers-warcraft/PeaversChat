@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 110.4 KB | 128 KB | pass |
+| Packaged size | 112.6 KB | 128 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -42,10 +42,10 @@ Scenarios driven against the real addon source, outside the game:
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
 | chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the URL filter is pure string work and never touches a widget |
-| switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 523 calls to skin every window at login, once |
+| switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 600 calls to skin every window at login, once |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>2,944 lines of Lua · 110.4 KB packaged · no bundled libraries</sub>
+<sub>2,990 lines of Lua · 112.6 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
