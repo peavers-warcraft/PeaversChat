@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 129.6 KB | 160 KB | pass |
+| Packaged size | 130.7 KB | 160 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -41,17 +41,17 @@ Scenarios driven against the real addon source, outside the game:
 
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
-| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the URL filter is pure string work and never touches a widget |
+| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the URL matcher is pure string work in an AddMessage hook, and never touches a widget |
 | switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 600 calls to skin every window at login, once |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>3,414 lines of Lua · 129.6 KB packaged · no bundled libraries</sub>
+<sub>3,435 lines of Lua · 130.7 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
 The zeroes are the point, so they are worth explaining:
 
-- **A chat message costs nothing.** The URL filter is pure string work, and it bails on a plain substring search before doing any pattern matching unless the message contains a dot or an at-sign. It never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
+- **A chat message costs nothing.** The URL matcher is pure string work, and it bails on a plain substring search before doing any pattern matching unless the line contains a dot or an at-sign. It never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
 - **Nothing runs per frame.** There is no `OnUpdate` anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved.
 - **The skin is built once.** One backdrop frame per window carrying five textures — a fill and four hairline edges — created the first time the window is seen and afterwards only recoloured and re-anchored.
 - **A hidden button costs one event handler.** Buttons are hidden by an `OnShow` hook rather than a poll, so the cost lands only when the client was going to show one anyway.
@@ -112,6 +112,16 @@ link. Three rules do the work:
 
 Clicking a link opens the copy window with the address selected. An addon cannot
 open a browser, so click, Ctrl+C, Escape is as close as the game gets.
+
+The matching happens on the line's way to the screen, in a hook on each chat
+frame's own `AddMessage`, rather than in a `ChatFrame_AddMessageEventFilter` on
+the way in. That is not a stylistic choice. The filter version stopped chat
+working in instanced content: authored messages never appeared while system
+messages, which take a different path, arrived normally. The event path is where
+the client does its restricted-data handling, and an addon standing in the
+middle of it is standing somewhere it no longer has any business being. By the
+time a line reaches `AddMessage` the client has finished with it and what
+arrives is text.
 
 ### Copying
 

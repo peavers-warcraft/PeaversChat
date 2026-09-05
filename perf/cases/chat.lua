@@ -218,6 +218,11 @@ local function NewChatFrame(index, windowName)
         frame._regions[#frame._regions + 1] = NewTexture(layer)
     end
 
+    -- Uncounted on purpose. The client calls AddMessage with or without this
+    -- addon, so charging the addon for it would flatter nothing and mislead
+    -- everything: what we want is the cost the hook *adds*.
+    frame.AddMessage = function(self, text) self._lastLine = text end
+
     frame.GetNumMessages = function() return #MESSAGES end
     frame.GetMessageInfo = function(_, i) return MESSAGES[((i - 1) % #MESSAGES) + 1] end
 
@@ -291,12 +296,6 @@ _G.FCF_DockFrame = function() end
 _G.ChatEdit_UpdateHeader = function() end
 _G.ChatEdit_ActivateChat = function() end
 _G.SetItemRef = function() end
-
-local filters = {}
-_G.ChatFrame_AddMessageEventFilter = function(event, fn)
-    filters[event] = filters[event] or {}
-    table.insert(filters[event], fn)
-end
 
 -- The buttons the addon hides.
 for _, name in ipairs({
@@ -448,7 +447,7 @@ assert(dock.peaversStrip, "the tab strip background was never drawn on the dock"
 assert(chatTabs[1].peaversUnderline, "the tab was never restyled")
 assert(chatFrames[1].editBox.peaversBox, "the edit box was never skinned")
 assert(chatFrames[1].peaversCopyButton, "the copy button was never built")
-assert(filters.CHAT_MSG_SAY, "no URL filter was installed")
+assert(chatFrames[1].__pcAddMessage, "the URL hook was never installed on ChatFrame1")
 assert(_G.CHAT_GUILD_GET:find("%[G%]"), "channel names were not abbreviated")
 assert(_G.ChatFrameMenuButton:IsShown() == false, "the menu button is still on screen")
 assert(chatFrames[1].peaversCopyButton:IsShown(), "the copy button is hidden")
@@ -457,9 +456,15 @@ assert(chatFrames[1].peaversCopyButton:IsShown(), "the copy button is hidden")
 -- A chat message
 --
 -- The claim is that this costs the client nothing at all, so it is driven
--- through the real registered filter rather than a copy of it. Half the sample
--- contains a URL and half does not, which is roughly what chat looks like and
--- keeps the cheap early-bail from flattering the number.
+-- through the hook the addon actually installed rather than a copy of it. Half
+-- the sample contains a URL and half does not, which is roughly what chat looks
+-- like and keeps the cheap early-bail from flattering the number.
+--
+-- Note where this now sits. The rewrite used to be a chat event filter and is
+-- now a wrapper on the chat frame's own AddMessage, because the filter broke
+-- chat outright in instanced content. The measured cost is the same work in a
+-- different place; what changed is that it is no longer standing in the middle
+-- of the client's event path.
 --------------------------------------------------------------------------------
 
 local SAMPLE = {
@@ -474,10 +479,7 @@ local SAMPLE = {
 }
 
 local function DeliverMessage(i)
-    local text = SAMPLE[((i - 1) % #SAMPLE) + 1]
-    for _, fn in ipairs(filters.CHAT_MSG_CHANNEL) do
-        fn(chatFrames[1], "CHAT_MSG_CHANNEL", text, "Peavers", "Common", "5. LookingForGroup")
-    end
+    chatFrames[1]:AddMessage(SAMPLE[((i - 1) % #SAMPLE) + 1])
 end
 
 local MESSAGES_PER_SECOND = 10
@@ -486,14 +488,13 @@ Stubs.ResetCounts()
 for i = 1, 400 do DeliverMessage(i) end
 local perMessage = Stubs.TotalCalls() / 400
 
--- The filter has to actually be doing the work, or the zero above is a zero
--- because nothing ran.
-do
-    local _, rewritten = filters.CHAT_MSG_CHANNEL[1](
-        chatFrames[1], "CHAT_MSG_CHANNEL", "see www.example.com", "Peavers")
-    assert(rewritten and rewritten:find("|Hurl:", 1, true),
-        "the filter is installed but is not linking anything")
-end
+-- The hook has to actually be doing the work, or the zero above is a zero
+-- because nothing ran. The frame's own AddMessage records what reached it, so
+-- this reads the hook's real output rather than a re-implementation of it.
+chatFrames[1]:AddMessage("see www.example.com")
+assert(chatFrames[1]._lastLine, "nothing reached the frame at all")
+assert(chatFrames[1]._lastLine:find("|Hurl:", 1, true),
+    "the hook is installed but is not linking anything")
 
 --------------------------------------------------------------------------------
 -- Switching tabs
@@ -555,7 +556,7 @@ return {
         callsPerSecond = perMessage * MESSAGES_PER_SECOND,
         idleCallsPerSecond = 0,
         notes = string.format(
-            "%.2f client calls per message: the URL filter is pure string work and never touches a widget",
+            "%.2f client calls per message: the URL matcher is pure string work in an AddMessage hook, and never touches a widget",
             perMessage),
     },
     {

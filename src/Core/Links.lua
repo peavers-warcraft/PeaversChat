@@ -138,56 +138,33 @@ local function Linkify(token)
     return lead .. Wrap(body) .. trail
 end
 
---------------------------------------------------------------------------------
--- The filter
---------------------------------------------------------------------------------
-
-local EVENTS = {
-    "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE",
-    "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER",
-    "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER",
-    "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING",
-    "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER",
-    "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
-    "CHAT_MSG_BN_WHISPER", "CHAT_MSG_BN_WHISPER_INFORM",
-    "CHAT_MSG_CHANNEL", "CHAT_MSG_COMMUNITIES_CHANNEL",
-    "CHAT_MSG_AFK", "CHAT_MSG_DND",
-    "CHAT_MSG_SYSTEM",
-}
-
---- The rewrite, on its own so the filter has something to pcall that is not a
---- closure. Returns nil when the message is to be left exactly as it arrived.
-local function Rewrite(msg)
+--- The rewrite, on its own so the hook has something to pcall that is not a
+--- closure. Returns nil when the line is to be left exactly as it arrived.
+local function Rewrite(text)
     -- A secret string can be stored and passed on but not searched, and find()
-    -- on one is a hard error rather than a miss. Chat text is not restricted
-    -- data today; this is here because the day it becomes restricted is the day
-    -- this function would otherwise start eating messages.
-    if IsSecret and IsSecret(msg) then return nil end
+    -- on one is a hard error rather than a miss. By this point the client has
+    -- resolved everything it was going to; this is the belt to that braces.
+    if IsSecret and IsSecret(text) then return nil end
 
     -- Cheap bail. A URL has to contain a dot or an at-sign, and a plain find is
     -- a memchr rather than a pattern match.
-    if not find(msg, ".", 1, true) and not find(msg, "@", 1, true) then
+    if not find(text, ".", 1, true) and not find(text, "@", 1, true) then
         return nil
     end
 
-    local rewritten = gsub(msg, "%S+", Linkify)
-    if rewritten == msg then return nil end
+    local rewritten = gsub(text, "%S+", Linkify)
+    if rewritten == text then return nil end
     return rewritten
 end
 
 --------------------------------------------------------------------------------
 -- Failing safe
 --
--- A message filter is the most dangerous place in the whole addon. It runs
--- inside ChatFrame_MessageEventHandler, before the line has been added, so an
--- error thrown here does not cost a URL - it costs the message, and every
--- message after it for as long as the fault lasts. "Chat stopped working" is
--- what that looks like from the outside, and it is not obvious it was an addon.
---
--- So the rewrite is called through pcall and, more importantly, this counts its
--- own failures and switches itself off after a handful. An addon feature that
--- has proven it cannot run is worth less than chat, every time. The player is
--- told once, in plain words, rather than left with silently degraded chat.
+-- This runs on the way to the screen, so an error here would cost the line it
+-- was called for. It is called through pcall and, more importantly, it counts
+-- its own failures and switches itself off after a handful. A feature that has
+-- proven it cannot run is worth less than chat, every time, and the player is
+-- told once in plain words rather than left with silently degraded chat.
 --------------------------------------------------------------------------------
 
 local failures = 0
@@ -198,7 +175,7 @@ local function NoteFailure(err)
     failures = failures + 1
 
     if PC.Config.debugMode then
-        print("|cff3abdf7PeaversChat|r: URL filter error: " .. tostring(err))
+        print("|cff3abdf7PeaversChat|r: URL matcher error: " .. tostring(err))
     end
 
     if failures >= FAILURE_LIMIT and not surrendered then
@@ -210,7 +187,7 @@ local function NoteFailure(err)
     end
 end
 
---- Whether the filter has given up on itself, for the settings page to show.
+--- Whether the matcher has given up on itself.
 function Links:HasSurrendered()
     return surrendered
 end
@@ -220,23 +197,73 @@ function Links:Resume()
     self:Sync()
 end
 
-local function Filter(_, _, msg, ...)
-    local cfg = PC.Config
-    if not cfg.enabled or not cfg.urlLinks or surrendered then return false end
-    if type(msg) ~= "string" then return false end
+--------------------------------------------------------------------------------
+-- Where the rewrite happens
+--
+-- On the way to the screen, not on the way in.
+--
+-- This used to be a ChatFrame_AddMessageEventFilter on every chat event, which
+-- is the documented way to alter a chat message and is what most addons reach
+-- for. In instanced content it stopped chat working: authored messages never
+-- appeared while system messages, which take a different path, arrived
+-- normally. Removing the filters fixed it, with the client happily delivering
+-- 36 party messages over a key that showed none of them.
+--
+-- The event path is where the client is doing its restricted-data handling, and
+-- an addon standing in the middle of it is standing somewhere it now has no
+-- business being. Prat - which has done clickable URLs for fifteen years and
+-- does not have this problem - does not call ChatFrame_AddMessageEventFilter
+-- once in its entire source. It works on the line after the client has finished
+-- building it, and so does this now.
+--
+-- So the hook is on each chat frame's own AddMessage. By then the message is a
+-- finished string: the name is coloured, the channel is bracketed, every
+-- restricted value has already been resolved by code allowed to resolve it, and
+-- what arrives here is text. Anything containing a pipe is skipped, which is
+-- every link the client just built, so none of that work can be damaged.
+--
+-- Uninstalling restores the original method only when nothing has hooked on top
+-- of ours. If something has, unwinding would throw away their hook with ours,
+-- so the wrapper is left in place as a pass-through instead. That is the one
+-- place in this addon where "off" does not mean "gone", and it is because the
+-- alternative is breaking somebody else's addon.
+--------------------------------------------------------------------------------
 
-    local ok, rewritten = pcall(Rewrite, msg)
+local active = false
 
-    if not ok then
-        NoteFailure(rewritten)
-        return false
+local function HookFrame(frame)
+    if frame.__pcAddMessage then return end
+    if type(frame.AddMessage) ~= "function" then return end
+
+    local original = frame.AddMessage
+    frame.__pcAddMessage = original
+
+    local wrapper = function(self, text, ...)
+        if active and type(text) == "string" then
+            local ok, rewritten = pcall(Rewrite, text)
+            if not ok then
+                NoteFailure(rewritten)
+            elseif rewritten then
+                text = rewritten
+            end
+        end
+        return original(self, text, ...)
     end
 
-    if rewritten then
-        return false, rewritten, ...
-    end
+    frame.AddMessage = wrapper
+    frame.__pcWrapper = wrapper
+end
 
-    return false
+local function UnhookFrame(frame)
+    local original = frame.__pcAddMessage
+    if not original then return end
+
+    -- Only unwind if we are still the outermost hook.
+    if frame.AddMessage == frame.__pcWrapper then
+        frame.AddMessage = original
+        frame.__pcAddMessage = nil
+        frame.__pcWrapper = nil
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -265,6 +292,13 @@ local function OnHyperlinkLeave(_, link)
 end
 
 local function Apply(frame)
+    -- A window adopted after Sync ran - a whisper tab, a temporary window - has
+    -- to be wrapped as it appears, or links work everywhere except the tab that
+    -- opened last.
+    if PC.Config.enabled and PC.Config.urlLinks and not Links:HasSurrendered() then
+        HookFrame(frame)
+    end
+
     if frame.__pcHyperlinkHooked then return end
     if type(frame.HookScript) ~= "function" then return end
 
@@ -280,45 +314,32 @@ end
 --------------------------------------------------------------------------------
 -- Registration
 --
--- Turning the feature off has to mean the filter is gone, not that it runs and
--- declines to do anything. Those are the same thing right up until you are
--- trying to work out whether this addon is what is wrong with chat: a filter
--- that is still registered is still called on every message, still sits in the
--- client's filter table, and still counts as an addon having touched the
--- message. "Off" that leaves the hook installed cannot answer that question,
--- which is exactly the question anybody typing /pchat safe is asking.
+-- Turning the feature off has to mean the hook stops acting, not that it acts
+-- and hopes. "Off" that leaves a live hook cannot answer the only question
+-- anybody asks it - is this addon what is wrong with my chat - so `active`
+-- gates the rewrite and Unwrap removes the wrapper outright wherever it safely
+-- can.
 --------------------------------------------------------------------------------
 
-local installed = false
-
 function Links:IsInstalled()
-    return installed
+    return active
 end
 
---- Install or remove the filters to match the current settings. Idempotent, and
---- the only thing that touches the client's filter table.
+--- Match the hooks to the current settings. Idempotent; called on every config
+--- change and every time a chat window is adopted.
 function Links:Sync()
-    local wanted = PC.Config.enabled and PC.Config.urlLinks and not surrendered
+    active = (PC.Config.enabled and PC.Config.urlLinks and not surrendered) and true or false
 
-    if wanted and not installed then
-        if type(_G.ChatFrame_AddMessageEventFilter) ~= "function" then return end
-        for i = 1, #EVENTS do
-            ChatFrame_AddMessageEventFilter(EVENTS[i], Filter)
-        end
-        installed = true
-    elseif not wanted and installed then
-        if type(_G.ChatFrame_RemoveMessageEventFilter) ~= "function" then return end
-        for i = 1, #EVENTS do
-            ChatFrame_RemoveMessageEventFilter(EVENTS[i], Filter)
-        end
-        installed = false
-    end
+    Frames:Each(function(frame)
+        if active then HookFrame(frame) else UnhookFrame(frame) end
+    end)
 end
 
 function Links:Initialize()
-    self:Refresh()
-
     Frames:RegisterHandler("links", Apply)
+
+    -- After the handler, so Sync sees the windows it has just been given.
+    self:Refresh()
 
     -- Clicking the link. The client routes every hyperlink in a chat frame
     -- through SetItemRef, including types it has never heard of, which is what
