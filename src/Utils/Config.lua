@@ -151,7 +151,12 @@ local PC_DEFAULTS = {
     ----------------------------------------------------------------------------
     -- Channels
     ----------------------------------------------------------------------------
-    shortChannelNames = true,
+    -- Off. The bracket these rewrite is the display text of a channel
+    -- hyperlink, and altering a hyperlink's display text is not the same kind
+    -- of edit as changing a word. Say is the one channel with no hyperlink in
+    -- its format string, and say is the one channel that kept working.
+    shortChannelNames = false,
+    shortChannelNamesWithdrawn = false,
     -- A Blizzard CVar value, "none", or "default" meaning leave whatever the
     -- player already set in the game's own options.
     timestamps = "default",

@@ -417,6 +417,7 @@ PC.Config = {
     copyIconSize = 11,
     copyStripColors = true,
     shortChannelNames = true,
+    shortChannelNamesWithdrawn = true,
     timestamps = "%H:%M ",
     debugMode = false,
     Save = function() end,

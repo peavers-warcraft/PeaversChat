@@ -578,7 +578,7 @@ function ConfigUI:BuildCopyPage(parentFrame)
     local _, channelY = W:CreateSectionHeader(parentFrame, "Channels", indent, y)
     y = channelY - 8
 
-    local _, afterShort = Toggle(parentFrame, "Abbreviate channel names", "shortChannelNames", y, indent, width, true)
+    local _, afterShort = Toggle(parentFrame, "Abbreviate channel names", "shortChannelNames", y, indent, width, false)
     y = afterShort - 4
 
     local timestamps = W:CreateDropdown(parentFrame, "Timestamps", {
@@ -594,11 +594,11 @@ function ConfigUI:BuildCopyPage(parentFrame)
     y = y - 58
 
     local note = W:CreateLabel(parentFrame,
-        "Guild, officer, party, raid and instance become [G], [O], [P], [R] and " ..
-            "[I]. Numbered public channels keep Blizzard's own naming - their " ..
-            "bracket is assembled per message rather than read from a format " ..
-            "string, and taking that over means reformatting every line in the " ..
-            "game.\n\nTimestamps are the game's own setting, written to the same " ..
+        "Off, and not for taste. The bracket this rewrites is the display text " ..
+            "of a channel hyperlink, and the game checks that a hyperlink shows " ..
+            "what it is supposed to show. Say is the one channel whose format " ..
+            "string carries no hyperlink, and say was the one channel that kept " ..
+            "working while the others went quiet.\n\nTimestamps are the game's own setting, written to the same " ..
             "CVar its options panel uses, so they survive this addon.",
         { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
     note:SetPoint("TOPLEFT", indent, y)

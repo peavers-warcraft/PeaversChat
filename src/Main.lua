@@ -363,6 +363,17 @@ PeaversCommons.Events:Init(addonName, function()
     -- changing its default does nothing for somebody who already has it saved
     -- as on. Being a suspect is reason enough not to wait for them to find the
     -- checkbox.
+    -- Forced off once, for the same reason as the screen edge below: a saved
+    -- setting would otherwise keep it on for everybody who already has it, and
+    -- this one is the current suspect. Every channel it rewrites is one that
+    -- stopped working; say, the only channel whose format string carries no
+    -- hyperlink, is the only one that kept working.
+    if not PC.Config.shortChannelNamesWithdrawn then
+        PC.Config.shortChannelNames = false
+        PC.Config.shortChannelNamesWithdrawn = true
+        PC.Config:Save()
+    end
+
     if not PC.Config.edgeToEdgeWithdrawn then
         PC.Config.edgeToEdge = false
         PC.Config.edgeToEdgeWithdrawn = true
