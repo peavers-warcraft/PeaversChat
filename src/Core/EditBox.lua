@@ -125,6 +125,16 @@ local function Apply(frame)
     local editBox = EditBoxFor(frame)
     if not editBox then return end
 
+    local pad = Skin.Pad()
+    local signature = table.concat({
+        cfg.fontSize, cfg.editBoxPosition or "bottom", cfg.editBoxHeight or 22,
+        pad.left, pad.right, pad.top, pad.bottom,
+        cfg.altArrowKeys and 1 or 0, cfg.background and 1 or 0, cfg.border and 1 or 0,
+        cfg.bgAlpha, cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b,
+        cfg.editBoxChannelColor and 1 or 0,
+    }, ":")
+    if not Skin.Changed(editBox, "__pcApplied", signature) then return end
+
     -- The strip, its focus variant, and the little language tab are all chrome.
     -- Everything on this frame in BACKGROUND or BORDER is Blizzard's art.
     Skin.KillChrome(editBox)
@@ -166,6 +176,7 @@ local function Restore(frame)
     local editBox = EditBoxFor(frame)
     if not editBox then return end
 
+    editBox.__pcApplied = nil
     Skin:HideBox(editBox)
     Skin.ReviveChrome(editBox)
 

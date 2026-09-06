@@ -48,6 +48,9 @@ local function SetHidden(widget, hidden)
         if widget.__pcWasShown == nil then
             widget.__pcWasShown = widget:IsShown() and true or false
         end
+        -- Already hidden and already ours: nothing to say. Being asked to
+        -- re-apply is common; hiding something twice is only a client call.
+        if widget.__pcHidden and not widget:IsShown() then return end
         widget.__pcHidden = true
         widget:Hide()
     else

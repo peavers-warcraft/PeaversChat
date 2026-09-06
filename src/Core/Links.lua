@@ -286,27 +286,49 @@ end
 -- Standing in for a chat frame
 --------------------------------------------------------------------------------
 
-local mirrored = {}
+-- Two flat tables reused for the life of the session, rather than a fresh
+-- record per field per message. This runs around every message that might carry
+-- a link, and the version that allocated was producing garbage in proportion to
+-- how much of the field list the client happened to be using.
+local mirrorKeys = {}
+local mirrorPrevious = {}
+local mirrorCount = 0
 
---- Copy the real frame's own state onto the proxy, so the client's handler -
---- which reads things like messageTypeList and defaultLanguage off the frame it
---- is given - makes the same decisions it would have made for the real one.
+-- Distinguishes "the proxy had nothing here" from "the proxy had nil here",
+-- which a plain table cannot.
+local ABSENT = {}
+
+--- Put the real frame's own state on the proxy, so the client's handler - which
+--- reads things like messageTypeList and defaultLanguage off the frame it is
+--- given - makes the same decisions it would have made for the real one.
 local function Mirror(frame)
-    for key in pairs(mirrored) do mirrored[key] = nil end
+    local count = 0
 
     for key, value in pairs(frame) do
         if type(value) ~= "function" and not PROXY_FIELD_BLACKLIST[key] then
-            mirrored[key] = { had = proxy[key] ~= nil, value = proxy[key] }
+            count = count + 1
+            mirrorKeys[count] = key
+
+            local previous = proxy[key]
+            mirrorPrevious[key] = (previous == nil) and ABSENT or previous
+
             proxy[key] = value
         end
     end
+
+    mirrorCount = count
 end
 
 local function Unmirror()
-    for key, saved in pairs(mirrored) do
-        if saved.had then proxy[key] = saved.value else proxy[key] = nil end
+    for index = 1, mirrorCount do
+        local key = mirrorKeys[index]
+        local previous = mirrorPrevious[key]
+
+        proxy[key] = (previous ~= ABSENT) and previous or nil
+        mirrorPrevious[key] = nil
     end
-    for key in pairs(mirrored) do mirrored[key] = nil end
+
+    mirrorCount = 0
 end
 
 --- The unread flash, put back. The client skipped its own because our stand-in
@@ -376,18 +398,39 @@ end
 --- matters more than the happy one. Anything going wrong hands the event
 --- straight back to the client's own handler, with the client's own frame, and
 --- the player sees the message they were always going to see.
-local function Dispatch(frame, event, ...)
-    if not active then
-        return originalHandler(frame, event, ...)
+--- Could the line this event produces possibly gain a link?
+---
+--- This is the difference between a chat addon you can feel and one you cannot.
+--- Standing in for a frame is not free - the client's own state has to be put on
+--- the stand-in and taken off again around every message - and the overwhelming
+--- majority of chat contains no URL at all, so paying that on every line to
+--- change one in fifty is the wrong trade.
+---
+--- Asking the raw message is sound because the raw message is the only part of
+--- the composed line the matcher can ever touch. Everything the client adds
+--- around it - the channel, the name - arrives wrapped in a hyperlink, and a
+--- token containing a pipe is skipped by the matcher on principle.
+local function CouldContainLink(message)
+    if type(message) ~= "string" then return false end
+    if IsSecret and IsSecret(message) then return false end
+
+    -- Two plain substring searches, no pattern matching. This is the whole cost
+    -- of an ordinary chat message.
+    return find(message, ".", 1, true) ~= nil or find(message, "@", 1, true) ~= nil
+end
+
+local function Dispatch(frame, event, message, ...)
+    if not active or not CouldContainLink(message) then
+        return originalHandler(frame, event, message, ...)
     end
 
     if Links.counting then Links.passes = (Links.passes or 0) + 1 end
 
-    local ok, result = pcall(Intercept, frame, event, ...)
+    local ok, result = pcall(Intercept, frame, event, message, ...)
     if ok then return result end
 
     NoteFailure(result)
-    return originalHandler(frame, event, ...)
+    return originalHandler(frame, event, message, ...)
 end
 
 --------------------------------------------------------------------------------

@@ -122,8 +122,29 @@ function Tabs:Paint(tab)
     -- font string is the fallback for temporary windows, which have no entry in
     -- the saved window list.
     local name = (frame and frame.name) or tab.__pcName or fs:GetText()
+    if name and name ~= "" then tab.__pcName = name end
+
+    local selected = IsSelected(frame)
+    local color = selected and cfg.tabSelectedColor or cfg.tabTextColor
+    if tab.__pcFlashing and not selected then color = cfg.accentColor end
+
+    -- Everything below this line is a client call, and clicking one tab
+    -- repaints the whole row - four of five tabs looking exactly as they did.
+    -- The two that changed, the one you left and the one you arrived at, are
+    -- the only ones worth any work, and this is how they are told apart.
+    local signature = table.concat({
+        name or "", selected and 1 or 0, tab.__pcFlashing and 1 or 0,
+        cfg.tabFontSize, cfg.tabUppercase and 1 or 0, cfg.tabUnderline and 1 or 0,
+        cfg.tabFont or "", color.r, color.g, color.b,
+        cfg.accentColor.r, cfg.accentColor.g, cfg.accentColor.b,
+    }, ":")
+
+    -- nil means "nothing to do here", which is different from false meaning
+    -- "repainted, and the width did not change". The caller needs both.
+    if tab.__pcPainted == signature then return nil end
+    tab.__pcPainted = signature
+
     if name and name ~= "" then
-        tab.__pcName = name
         fs:SetText(cfg.tabUppercase and name:upper() or name)
     end
 
@@ -148,10 +169,6 @@ function Tabs:Paint(tab)
     if not pcall(fs.SetFont, fs, face, cfg.tabFontSize, tab.__pcFont[3]) then
         pcall(fs.SetFont, fs, tab.__pcFont[1], cfg.tabFontSize, tab.__pcFont[3])
     end
-
-    local selected = IsSelected(frame)
-    local color = selected and cfg.tabSelectedColor or cfg.tabTextColor
-    if tab.__pcFlashing and not selected then color = cfg.accentColor end
 
     fs:SetTextColor(color.r, color.g, color.b)
     -- Blizzard drives the tab's colour through SetVertexColor on the font
@@ -255,27 +272,35 @@ local function Apply(frame)
 
     -- Every texture on a chat tab is chrome; the only content is the word. The
     -- glow is spared when we have no way of knowing the flashing has stopped.
-    local keepGlow = not CanColorFlash() and TabGlow(tab) or nil
-    local regions = { tab:GetRegions() }
-    for i = 1, #regions do
-        local region = regions[i]
-        if region and region.GetObjectType and region:GetObjectType() == "Texture"
-            and region ~= keepGlow then
-            Kill(region)
+    --
+    -- Once per tab. A killed texture cannot come back - its Show is its Hide -
+    -- so a second sweep finds nothing, and finding nothing costs two client
+    -- calls a region every time the client asks us to re-apply.
+    if not tab.__pcSwept then
+        tab.__pcSwept = true
+
+        local keepGlow = not CanColorFlash() and TabGlow(tab) or nil
+        local regions = { tab:GetRegions() }
+        for i = 1, #regions do
+            local region = regions[i]
+            if region and region.GetObjectType and region:GetObjectType() == "Texture"
+                and region ~= keepGlow then
+                Kill(region)
+            end
         end
-    end
 
-    if keepGlow and keepGlow.SetVertexColor then
-        keepGlow:SetVertexColor(cfg.accentColor.r, cfg.accentColor.g, cfg.accentColor.b)
-    end
+        if keepGlow and keepGlow.SetVertexColor then
+            keepGlow:SetVertexColor(cfg.accentColor.r, cfg.accentColor.g, cfg.accentColor.b)
+        end
 
-    -- Highlight and pushed states are textures on the button rather than
-    -- regions, so they need naming individually.
-    for _, getter in ipairs({ "GetHighlightTexture", "GetPushedTexture",
-        "GetNormalTexture", "GetDisabledTexture" }) do
-        if tab[getter] then
-            local tex = tab[getter](tab)
-            if tex and tex ~= keepGlow then Kill(tex) end
+        -- Highlight and pushed states are textures on the button rather than
+        -- regions, so they need naming individually.
+        for _, getter in ipairs({ "GetHighlightTexture", "GetPushedTexture",
+            "GetNormalTexture", "GetDisabledTexture" }) do
+            if tab[getter] then
+                local tex = tab[getter](tab)
+                if tex and tex ~= keepGlow then Kill(tex) end
+            end
         end
     end
 
@@ -296,12 +321,18 @@ local function Apply(frame)
     end
 
     LockAlpha(tab)
-    if Tabs:Paint(tab) and not painting then RelayoutDock() end
 
-    -- The strip above the window is measured from the tab's text, and the text
-    -- has only just become ours - a different size, possibly a different casing.
-    -- Skin measured Blizzard's when it ran; this is the corrected number.
-    if PC.Skin.RefreshStrip then PC.Skin:RefreshStrip(frame) end
+    local resized = Tabs:Paint(tab)
+    if resized ~= nil then
+        if resized and not painting then RelayoutDock() end
+
+        -- The strip above the window is measured from the tab's text, and that
+        -- text has just become ours - a different size, possibly a different
+        -- casing. Skin measured Blizzard's when it ran, so the cached number is
+        -- stale and this is the one place that knows it.
+        Skin.InvalidateMeasure(frame)
+        if PC.Skin.RefreshStrip then PC.Skin:RefreshStrip(frame) end
+    end
 end
 
 local function Restore(frame)
@@ -309,6 +340,8 @@ local function Restore(frame)
     if not tab then return end
 
     UnlockAlpha(tab)
+    tab.__pcSwept = nil
+    tab.__pcPainted = nil
 
     for _, ancestor in ipairs({ tab:GetParent(), Skin.StripHost(frame) }) do
         if ancestor and ancestor ~= frame and ancestor ~= _G.UIParent then

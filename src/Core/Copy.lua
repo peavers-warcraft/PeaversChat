@@ -364,6 +364,8 @@ end
 
 local function SetHovered(button, hovered)
     if not button then return end
+    if (button.__pcHovered and true or false) == (hovered and true or false) then return end
+
     button.__pcHovered = hovered or nil
     ApplyVisibility(button)
 end
@@ -410,7 +412,7 @@ end
 --- the middle of the tab's text, so the mark sits on the same line as the words
 --- rather than floating in the band around them. Falls back to the middle of
 --- the strip when the text has not been laid out yet, which at login it has not.
-local function InlineOffset(frame, size)
+local function MeasureInline(frame, size)
     local tab = PC.Frames:TabFor(frame)
     local fontString = tab and PC.Tabs and PC.Tabs.FontString and PC.Tabs.FontString(tab)
 
@@ -427,6 +429,23 @@ local function InlineOffset(frame, size)
 
     local strip = PC.Skin.StripHeight(frame) or 0
     return (strip / 2) + (size / 2)
+end
+
+--- Cached for the life of one sweep, like the strip height it sits beside, and
+--- for the same reason: reading a font string's top and bottom off the client
+--- is not something to do three times over for one refresh.
+local function InlineOffset(frame, size)
+    local generation = PC.Frames.generation
+
+    if frame.__pcInlineGen == generation and frame.__pcInlineSize == size then
+        return frame.__pcInline
+    end
+
+    local offset = MeasureInline(frame, size)
+    frame.__pcInlineGen = generation
+    frame.__pcInlineSize = size
+    frame.__pcInline = offset
+    return offset
 end
 
 local function Apply(frame)
@@ -452,19 +471,32 @@ local function Apply(frame)
     HookHover(frame, host)
 
     local size = IconSize()
+    local pad = PC.Skin.Pad()
+    local offset = InlineOffset(frame, size)
+
+    local signature = table.concat({
+        size, pad.right, pad.top, offset,
+        cfg.enabled and 1 or 0, cfg.copyButton and 1 or 0,
+        cfg.copyButtonVisibility or "dim",
+        cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b,
+    }, ":")
+    if not PC.Skin.Changed(button, "__pcApplied", signature) then return end
+
     button:SetSize(size, size)
     SizeGlyph(button, size)
 
-    local pad = PC.Skin.Pad()
     button:ClearAllPoints()
-    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(pad.right + 2), InlineOffset(frame, size))
+    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(pad.right + 2), offset)
 
     ApplyVisibility(button)
 end
 
 local function Restore(frame)
     local host = PC.Skin.StripHost(frame) or frame
-    if host.peaversCopyButton then host.peaversCopyButton:Hide() end
+    if host.peaversCopyButton then
+        host.peaversCopyButton.__pcApplied = nil
+        host.peaversCopyButton:Hide()
+    end
 end
 
 function Copy:Initialize()

@@ -31,30 +31,32 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 158.7 KB | 192 KB | pass |
+| Packaged size | 168.5 KB | 176 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
-| Widget calls per second | 33 | 60 | pass |
+| Widget calls per second | 21.89 | 30 | pass |
 
 Scenarios driven against the real addon source, outside the game:
 
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
-| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the client composes against our stand-in frame and the rewrite is pure string work, never a widget call |
-| switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 796 calls to skin every window at login, once |
+| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: most bail on a plain substring search before any of it, and the rewrite never touches a widget |
+| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 580 calls to skin every window at login, once |
+| told to re-apply, 1/sec | 0.00 | 21.0 | 21.0 calls to re-apply the skin to every window when nothing has changed |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>4,128 lines of Lua · 158.7 KB packaged · no bundled libraries</sub>
+<sub>4,357 lines of Lua · 168.5 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
 The zeroes are the point, so they are worth explaining:
 
-- **A chat message costs nothing.** The URL matcher is pure string work, and it bails on a plain substring search before doing any pattern matching unless the line contains a dot or an at-sign. It never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
+- **A chat message costs nothing.** A message that cannot contain a URL — no dot, no at-sign — is recognised by two plain substring searches and handed straight to the client, untouched, before any of this addon's machinery runs. That is most of chat. The ones that survive that test go through a matcher that is pure string work and never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
 - **Nothing runs per frame.** There is no `OnUpdate` anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved.
 - **The skin is built once.** One backdrop frame per window carrying five textures — a fill and four hairline edges — created the first time the window is seen and afterwards only recoloured and re-anchored.
 - **A hidden button costs one event handler.** Buttons are hidden by an `OnShow` hook rather than a poll, so the cost lands only when the client was going to show one anyway.
+- **Being told to re-apply costs almost nothing.** The client asks on every visit to the options panel, every dock and undock, and some loading screens. Each module records what it last applied and compares before doing it again, and the measurements a repaint depends on are taken once per pass rather than once per module that wants them. A re-apply that finds nothing changed was 261 client calls; it is now 21, and most of that is asking the client whether anything has moved.
 
 The recurring cost that is not zero is repainting the tab row when you click a
 tab, which is measured above at one switch a second — considerably more often

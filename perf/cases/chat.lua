@@ -539,6 +539,28 @@ for i = 1, 200 do SwitchTab(i) end
 local perTabSwitch = Stubs.TotalCalls() / 200
 
 --------------------------------------------------------------------------------
+-- Being told to look again
+--
+-- The client fires UPDATE_CHAT_WINDOWS on every visit to the options panel,
+-- every dock and undock, and some loading screens, and each one asks this addon
+-- to re-apply itself to every window. Nothing has usually changed, so the honest
+-- cost of being asked is close to zero - but only because each painter compares
+-- what it is about to draw against what it drew last time. Without that this is
+-- five textures a window, every time, forever.
+--
+-- Measured at one a second, which is far more often than the client asks.
+--------------------------------------------------------------------------------
+
+PC.Frames:Refresh()
+
+local REFRESHES_PER_SECOND = 1
+
+Stubs.ResetCounts()
+for _ = 1, 200 do PC.Frames:Refresh() end
+local perRefresh = Stubs.TotalCalls() / 200
+
+
+--------------------------------------------------------------------------------
 -- The idle claim
 --
 -- Every frame the addon created, hunted for an OnUpdate. WoW does not tick a
@@ -577,7 +599,7 @@ return {
         callsPerSecond = perMessage * MESSAGES_PER_SECOND,
         idleCallsPerSecond = 0,
         notes = string.format(
-            "%.2f client calls per message: the client composes against our stand-in frame and the rewrite is pure string work, never a widget call",
+            "%.2f client calls per message: most bail on a plain substring search before any of it, and the rewrite never touches a widget",
             perMessage),
     },
     {
@@ -588,6 +610,15 @@ return {
         notes = string.format(
             "%.0f calls to repaint the whole tab row; %d calls to skin every window at login, once",
             perTabSwitch, loginCalls),
+    },
+    {
+        name = "told to re-apply, 1/sec",
+        callsPerFrame = 0,
+        callsPerSecond = perRefresh * REFRESHES_PER_SECOND,
+        idleCallsPerSecond = 0,
+        notes = string.format(
+            "%.1f calls to re-apply the skin to every window when nothing has changed",
+            perRefresh),
     },
     {
         name = "idle, chat on screen",

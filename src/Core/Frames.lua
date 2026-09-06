@@ -86,8 +86,16 @@ function Frames:Adopt(frame)
     RunHandlers(frame)
 end
 
+--- Bumped at the start of every sweep. Measurements taken off a frame - how
+--- far its tab reaches above it, where its tab text sits - are expensive
+--- enough to be worth taking once per sweep rather than once per module that
+--- wants them, and this is what tells a cached measurement it has gone stale.
+Frames.generation = 0
+
 --- Every chat frame the client currently has, adopted or not.
 function Frames:Sweep()
+    self.generation = self.generation + 1
+
     for i = 1, NUM_WINDOWS do
         local frame = _G["ChatFrame" .. i]
         if frame then self:Adopt(frame) end

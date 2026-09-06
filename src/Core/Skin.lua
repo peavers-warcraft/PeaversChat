@@ -79,6 +79,35 @@ local NO_PAD = { left = 0, right = 0, top = 0, bottom = 0 }
 Skin.NO_PAD = NO_PAD
 
 --------------------------------------------------------------------------------
+-- Doing nothing well
+--
+-- The client asks this addon to re-apply itself far more often than anything
+-- has changed: every visit to the options panel, every dock and undock, some
+-- loading screens. Re-applying is idempotent, so it was harmless - but harmless
+-- is not free, and measured, being asked cost two hundred and sixty client
+-- calls a time to arrive back where it started.
+--
+-- So every module records what it last applied and compares before doing it
+-- again. Being asked to re-apply when nothing has changed is now a handful of
+-- string compares and no client calls at all.
+--
+-- This is safe because nothing the client resets is left to a refresh to put
+-- back: hidden textures cannot be shown again, tab alpha is pinned, and the
+-- edit box anchor and the clamp insets are re-asserted from the client's own
+-- call sites. A refresh that finds nothing changed genuinely has nothing to do.
+--------------------------------------------------------------------------------
+
+--- True when `signature` differs from what was last recorded, and records it.
+--- @param owner table Anything we may store state on - a frame, a tab, a button.
+--- @param slot string Field to keep the previous signature in.
+--- @param signature string
+function Skin.Changed(owner, slot, signature)
+    if owner[slot] == signature then return false end
+    owner[slot] = signature
+    return true
+end
+
+--------------------------------------------------------------------------------
 -- Hiding Blizzard's art
 --
 -- Shared with Tabs and EditBox, which have far more of it to take down.
@@ -115,8 +144,16 @@ local Kill, Revive = Skin.Kill, Skin.Revive
 --- Take down every background and border texture a frame owns. Deliberately
 --- leaves ARTWORK and OVERLAY alone: chrome lives underneath the content, and
 --- anything drawn above it is content somebody wants to see.
+---
+--- Swept once per frame. A killed texture cannot be shown again - its Show is
+--- its Hide - so there is nothing for a second sweep to find, and sweeping is
+--- not free: it is two client calls per region to ask what layer it is in, on
+--- every frame, every time the client asks us to re-apply. ReviveChrome clears
+--- the mark, so switching off and on again sweeps properly.
 function Skin.KillChrome(frame)
     if not frame or not frame.GetRegions then return end
+    if frame.__pcChromeSwept then return end
+    frame.__pcChromeSwept = true
 
     local regions = { frame:GetRegions() }
     for i = 1, #regions do
@@ -134,6 +171,7 @@ end
 --- Put back what KillChrome took down.
 function Skin.ReviveChrome(frame)
     if not frame or not frame.GetRegions then return end
+    frame.__pcChromeSwept = nil
 
     local regions = { frame:GetRegions() }
     for i = 1, #regions do
@@ -321,14 +359,15 @@ local TEXT_MARGIN = 5
 --- refresh gets the real number. The sanity bounds catch the case where the two
 --- frames turn out to be in different coordinate spaces, where subtracting one
 --- from the other is meaningless rather than merely wrong.
-local function StripHeight(frame)
-    local cfg = PC.Config
-    if not cfg.tabsInside then return 0 end
+--- Forget a frame's cached measurement, for when something we did has changed
+--- it - restyling the tab text, most of all.
+function Skin.InvalidateMeasure(frame)
+    frame.__pcMeasureGen = nil
+end
 
+local function MeasureStrip(frame)
     local tab = PC.Frames:TabFor(frame)
     if not tab then return 0 end
-
-    if cfg.tabStripHeight and cfg.tabStripHeight > 0 then return cfg.tabStripHeight end
 
     local frameTop = frame:GetTop()
 
@@ -356,6 +395,30 @@ local function StripHeight(frame)
     if height and height >= 8 and height <= 80 then return height end
 
     return 22
+end
+
+--- Cached for the life of one sweep. Three modules want this number and each of
+--- them used to go and read it off the frames again: measured, that was eleven
+--- geometry reads per window on every refresh, and geometry reads are the sort
+--- the client resolves a layout to answer.
+local function StripHeight(frame)
+    -- The two answers that need no measuring are given before the cache, so a
+    -- setting change takes effect the moment it is made rather than waiting for
+    -- the next sweep to invalidate something.
+    local cfg = PC.Config
+    if not cfg.tabsInside then return 0 end
+    if cfg.tabStripHeight and cfg.tabStripHeight > 0 then return cfg.tabStripHeight end
+
+    local generation = PC.Frames.generation
+
+    if frame.__pcMeasureGen == generation and frame.__pcStripHeight then
+        return frame.__pcStripHeight
+    end
+
+    local height = MeasureStrip(frame)
+    frame.__pcMeasureGen = generation
+    frame.__pcStripHeight = height
+    return height
 end
 
 Skin.StripHeight = StripHeight
@@ -433,7 +496,26 @@ end
 --- text, and Tabs is what changes that text's size and casing. Skin's handler
 --- runs first, so the measurement it takes at login is of Blizzard's font.
 --- Tabs calls this again once the tab is its own, and the number is right.
-function Skin:RefreshStrip(frame)
+--- What the painted result depends on. Repainting is idempotent, so doing it
+--- twice is harmless - but it is not free, and it happens far more often than
+--- anything actually changes: the client fires UPDATE_CHAT_WINDOWS on every
+--- options visit, dock, undock and some loading screens, and every one of those
+--- repainted five textures per window for no reason. Comparing a signature
+--- turns those into a string compare.
+local function PaintSignature(frame, pad, strip)
+    local cfg = PC.Config
+    local bg, border = cfg.bgColor, cfg.borderColor
+
+    return table.concat({
+        strip, pad.left, pad.right, pad.top, pad.bottom,
+        bg.r, bg.g, bg.b, cfg.bgAlpha,
+        border.r, border.g, border.b,
+        cfg.background and 1 or 0, cfg.border and 1 or 0,
+        Hairline(frame),
+    }, ":")
+end
+
+function Skin:RefreshStrip(frame, force)
     local cfg = PC.Config
     if not cfg.enabled then return end
 
@@ -444,6 +526,10 @@ function Skin:RefreshStrip(frame)
     local strip = host and StripHeight(frame) or 0
 
     local pad = Skin.Pad()
+
+    local signature = PaintSignature(frame, pad, strip)
+    if not force and frame.__pcPainted == signature then return end
+    frame.__pcPainted = signature
 
     Skin:EnsureBox(frame)
     Skin:PaintBox(frame, pad, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
@@ -538,6 +624,18 @@ local function Apply(frame)
     local cfg = PC.Config
     if not cfg.enabled then return end
 
+    -- The strip keeps its own signature: it depends on measurements as well as
+    -- settings, so it has to be asked separately.
+    Skin:RefreshStrip(frame)
+    HookClamp(frame)
+
+    local signature = table.concat({
+        cfg.fontSize, cfg.fontOutline or "", cfg.shadow and 1 or 0,
+        cfg.fading and 1 or 0, cfg.timeVisible, cfg.maxLines or 0,
+        cfg.edgeToEdge and 1 or 0,
+    }, ":")
+    if not Skin.Changed(frame, "__pcSkinState", signature) then return end
+
     Skin.KillChrome(frame)
 
     -- Zeroing rather than removing: see the header note. Wrapped because a frame
@@ -547,9 +645,6 @@ local function Apply(frame)
         if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(0, 0, 0, 0) end
     end)
 
-    Skin:RefreshStrip(frame)
-
-    HookClamp(frame)
     ClearClamp(frame)
 
     ApplyFont(frame)
@@ -567,6 +662,10 @@ local function Apply(frame)
 end
 
 local function Restore(frame)
+    -- Forget what was applied, so switching back on re-applies it all.
+    frame.__pcSkinState = nil
+    frame.__pcPainted = nil
+
     Skin:HideBox(frame)
     Skin:HideStrip(frame)
     RestoreFont(frame)
