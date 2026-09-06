@@ -128,6 +128,9 @@ function Tabs:Paint(tab)
     local color = selected and cfg.tabSelectedColor or cfg.tabTextColor
     if tab.__pcFlashing and not selected then color = cfg.accentColor end
 
+    local wanted = name
+    if wanted and wanted ~= "" and cfg.tabUppercase then wanted = wanted:upper() end
+
     -- Everything below this line is a client call, and clicking one tab
     -- repaints the whole row - four of five tabs looking exactly as they did.
     -- The two that changed, the one you left and the one you arrived at, are
@@ -139,13 +142,25 @@ function Tabs:Paint(tab)
         cfg.accentColor.r, cfg.accentColor.g, cfg.accentColor.b,
     }, ":")
 
+    -- The signature says what was last asked for. It cannot say what is
+    -- actually on the tab, and those come apart: the client rewrites the tab
+    -- text during its own dock setup, after we have painted, and a signature
+    -- that only remembers our intent has no way to notice. The symptom was a
+    -- tab that showed its ordinary name until it was clicked - clicking changes
+    -- the selection, which changes the signature, which finally repaints it -
+    -- and a width measured from a string that was no longer displayed.
+    --
+    -- So the displayed text is compared too. One read, and it is the difference
+    -- between remembering what we asked for and knowing what is there.
+    local displayed = fs:GetText()
+
     -- nil means "nothing to do here", which is different from false meaning
     -- "repainted, and the width did not change". The caller needs both.
-    if tab.__pcPainted == signature then return nil end
+    if tab.__pcPainted == signature and displayed == wanted then return nil end
     tab.__pcPainted = signature
 
-    if name and name ~= "" then
-        fs:SetText(cfg.tabUppercase and name:upper() or name)
+    if wanted and wanted ~= "" and displayed ~= wanted then
+        fs:SetText(wanted)
     end
 
     if not tab.__pcFont then

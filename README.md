@@ -33,23 +33,23 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 186.4 KB | 208 KB | pass |
+| Packaged size | 187.2 KB | 208 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
-| Widget calls per second | 21.89 | 30 | pass |
+| Widget calls per second | 21 | 30 | pass |
 
 Scenarios driven against the real addon source, outside the game:
 
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
 | chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the matcher is pure string work and never touches a widget |
-| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 583 calls to skin every window at login, once |
-| combat log flooding, 300 lines/sec | 0.00 | 1.1 | 1 repaint(s) for 3000 combat log lines and 0 for 3000 dock updates: after the first, there is nothing to say |
+| switching tabs, 1/sec | 0.00 | 19.9 | 20 calls to repaint the whole tab row; 583 calls to skin every window at login, once |
+| combat log flooding, 300 lines/sec | 0.00 | 1.0 | 1 repaint(s) for 3000 combat log lines and 0 for 3000 dock updates: after the first, there is nothing to say |
 | told to re-apply, 1/sec | 0.00 | 21.0 | 21.0 calls to re-apply the skin to every window when nothing has changed |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>4,796 lines of Lua · 186.4 KB packaged · no bundled libraries</sub>
+<sub>4,811 lines of Lua · 187.2 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
