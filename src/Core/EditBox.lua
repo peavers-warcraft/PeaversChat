@@ -80,7 +80,7 @@ function EditBox:Repaint(editBox)
         if color and color.r then border = color end
     end
 
-    Skin:PaintBox(editBox, 0, cfg.bgColor, cfg.bgAlpha, border, cfg.background, cfg.border)
+    Skin:PaintBox(editBox, Skin.NO_PAD, cfg.bgColor, cfg.bgAlpha, border, cfg.background, cfg.border)
 end
 
 --------------------------------------------------------------------------------
@@ -98,16 +98,18 @@ local function Position(editBox)
     local frame = editBox.chatFrame or editBox:GetParent()
     if not frame or frame == _G.UIParent then return end
 
-    local pad = cfg.padding or 0
-    local gap = pad + 5
+    -- Left and right come from the window, so the two boxes line up down their
+    -- edges. The gap is measured off whichever side it sits on.
+    local pad = Skin.Pad()
+    local gap = (cfg.editBoxPosition == "top" and pad.top or pad.bottom) + 5
 
     editBox:ClearAllPoints()
     if cfg.editBoxPosition == "top" then
-        editBox:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, gap)
-        editBox:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, gap)
+        editBox:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad.left, gap)
+        editBox:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad.right, gap)
     else
-        editBox:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", -pad, -gap)
-        editBox:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", pad, -gap)
+        editBox:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", -pad.left, -gap)
+        editBox:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", pad.right, -gap)
     end
     editBox:SetHeight(cfg.editBoxHeight or 22)
 end

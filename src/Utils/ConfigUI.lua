@@ -162,17 +162,30 @@ function ConfigUI:BuildAppearancePage(parentFrame)
     borderPicker:SetPoint("TOPLEFT", indent, y)
     y = y - 36
 
-    local padding = W:CreateSlider(parentFrame, "Padding", {
-        min = 0, max = 16, step = 1,
-        value = PC.Config.padding or 4,
-        width = width,
-        onChange = function(value)
-            PC.Config.padding = value
-            Apply()
-        end,
-    })
-    padding:SetPoint("TOPLEFT", indent, y)
-    y = y - 56
+    -- Four sliders rather than one, because how much room the text wants from
+    -- the border genuinely differs by edge - the left is the one every line
+    -- starts against and is read against, and it usually wants a little more
+    -- than the other three.
+    for _, side in ipairs({
+        { key = "paddingLeft", label = "Padding left", default = 8 },
+        { key = "paddingRight", label = "Padding right", default = 6 },
+        { key = "paddingTop", label = "Padding top", default = 6 },
+        { key = "paddingBottom", label = "Padding bottom", default = 6 },
+    }) do
+        local slider = W:CreateSlider(parentFrame, side.label, {
+            min = 0, max = 24, step = 1,
+            value = PC.Config[side.key] or side.default,
+            width = width,
+            onChange = function(value)
+                PC.Config[side.key] = value
+                Apply()
+            end,
+        })
+        slider:SetPoint("TOPLEFT", indent, y)
+        y = y - 56
+    end
+
+    y = y - 6
 
     local _, afterEdge = Toggle(parentFrame, "Let the window reach the screen edge",
         "edgeToEdge", y, indent, width, true)

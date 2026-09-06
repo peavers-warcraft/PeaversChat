@@ -40,7 +40,20 @@ local PC_DEFAULTS = {
     bgAlpha = 0.60,
     border = true,
     borderColor = { r = 0.176, g = 0.176, b = 0.176 },
+    -- Padding is per side. How much room the text wants from the border differs
+    -- by edge: the left is where every line starts and is the one you actually
+    -- read against, the right is ragged, the top sits under a tab row and the
+    -- bottom over an edit box.
+    paddingLeft = 8,
+    paddingRight = 6,
+    paddingTop = 6,
+    paddingBottom = 6,
+
+    -- Legacy. Read once to seed the four above for anybody upgrading, then
+    -- never again. Kept in the defaults so migration has something to read on a
+    -- profile that predates the split.
     padding = 6,
+    paddingSplit = false,
 
     -- Blizzard gives every chat window a clamping inset, which is why dragging
     -- one to the left of the screen stops short against nothing you can see.

@@ -58,6 +58,27 @@ end
 Skin.Hairline = Hairline
 
 --------------------------------------------------------------------------------
+-- Padding
+--------------------------------------------------------------------------------
+
+--- The four insets, as one table, so the painters can pass them around without
+--- four parameters becoming eight. Built fresh each call: this runs on a
+--- settings change, not on a message.
+--- @return table pad { left, right, top, bottom }
+function Skin.Pad()
+    local cfg = PC.Config
+    return {
+        left = cfg.paddingLeft or 6,
+        right = cfg.paddingRight or 6,
+        top = cfg.paddingTop or 6,
+        bottom = cfg.paddingBottom or 6,
+    }
+end
+
+local NO_PAD = { left = 0, right = 0, top = 0, bottom = 0 }
+Skin.NO_PAD = NO_PAD
+
+--------------------------------------------------------------------------------
 -- Hiding Blizzard's art
 --
 -- Shared with Tabs and EditBox, which have far more of it to take down.
@@ -174,36 +195,38 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
     if not box then return end
 
     local px = Hairline(frame)
-    pad = pad or 0
+    pad = pad or NO_PAD
 
-    local topPad = skipTop and 0 or pad
+    local left, right = -pad.left, pad.right
+    local bottom = -pad.bottom
+    local topPad = skipTop and 0 or pad.top
 
     box.bg:ClearAllPoints()
-    box.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, topPad)
-    box.bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", pad, -pad)
+    box.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, topPad)
+    box.bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom)
     box.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
     box.bg:SetShown(showBg and true or false)
 
     -- The four edges sit on the padded rect, not on the frame, so the border is
     -- the outline of what you can see rather than of where the text starts.
     box.top:ClearAllPoints()
-    box.top:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, topPad)
-    box.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, topPad)
+    box.top:SetPoint("TOPLEFT", frame, "TOPLEFT", left, topPad)
+    box.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, topPad)
     box.top:SetHeight(px)
 
     box.bottom:ClearAllPoints()
-    box.bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -pad, -pad)
-    box.bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", pad, -pad)
+    box.bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", left, bottom)
+    box.bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom)
     box.bottom:SetHeight(px)
 
     box.left:ClearAllPoints()
-    box.left:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, topPad)
-    box.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -pad, -pad)
+    box.left:SetPoint("TOPLEFT", frame, "TOPLEFT", left, topPad)
+    box.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", left, bottom)
     box.left:SetWidth(px)
 
     box.right:ClearAllPoints()
-    box.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, topPad)
-    box.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", pad, -pad)
+    box.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, topPad)
+    box.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom)
     box.right:SetWidth(px)
 
     for _, name in ipairs({ "top", "bottom", "left", "right" }) do
@@ -360,33 +383,35 @@ function Skin:PaintStrip(host, frame, pad, height, bgColor, bgAlpha, borderColor
     if not strip then return end
 
     local px = Hairline(frame)
-    pad = pad or 0
+    pad = pad or NO_PAD
+
+    local left, right = -pad.left, pad.right
 
     -- Bottom flush with the frame's top edge, where the box now stops, so the
-    -- two meet exactly and neither reaches into the other's territory. The
+    -- two meet exactly and neither reaches into the other's territory. The top
     -- padding is spent upwards, above the tab text, which is the only direction
     -- there is room to spend it in.
-    local top = height + pad
+    local top = height + pad.top
 
     strip.bg:ClearAllPoints()
-    strip.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, top)
-    strip.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, 0)
+    strip.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top)
+    strip.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", right, 0)
     strip.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
     strip.bg:SetShown(showBg and true or false)
 
     strip.top:ClearAllPoints()
-    strip.top:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, top)
-    strip.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, top)
+    strip.top:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top)
+    strip.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, top)
     strip.top:SetHeight(px)
 
     strip.left:ClearAllPoints()
-    strip.left:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, top)
-    strip.left:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, 0)
+    strip.left:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top)
+    strip.left:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", left, 0)
     strip.left:SetWidth(px)
 
     strip.right:ClearAllPoints()
-    strip.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, top)
-    strip.right:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, 0)
+    strip.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, top)
+    strip.right:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", right, 0)
     strip.right:SetWidth(px)
 
     for _, name in ipairs({ "top", "left", "right" }) do
@@ -418,13 +443,15 @@ function Skin:RefreshStrip(frame)
     local host = Skin.StripHost(frame)
     local strip = host and StripHeight(frame) or 0
 
+    local pad = Skin.Pad()
+
     Skin:EnsureBox(frame)
-    Skin:PaintBox(frame, cfg.padding, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
+    Skin:PaintBox(frame, pad, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
         cfg.background, cfg.border, strip > 0)
 
     if host then
         Skin:EnsureStrip(host)
-        Skin:PaintStrip(host, frame, cfg.padding, strip, cfg.bgColor, cfg.bgAlpha,
+        Skin:PaintStrip(host, frame, pad, strip, cfg.bgColor, cfg.bgAlpha,
             cfg.borderColor, cfg.background and strip > 0, cfg.border and strip > 0)
     end
 end

@@ -173,6 +173,22 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
 PeaversCommons.Events:Init(addonName, function()
     PC.Config:Initialize()
 
+    -- Padding used to be one number for all four sides. Anybody upgrading has
+    -- that number saved and nothing in the four keys that replaced it, and a
+    -- saved setting shadows a default forever - so without this their carefully
+    -- chosen padding would silently become ours. Runs once.
+    if not PC.Config.paddingSplit then
+        local legacy = tonumber(PC.Config.padding)
+        if legacy then
+            PC.Config.paddingLeft = legacy
+            PC.Config.paddingRight = legacy
+            PC.Config.paddingTop = legacy
+            PC.Config.paddingBottom = legacy
+        end
+        PC.Config.paddingSplit = true
+        PC.Config:Save()
+    end
+
     -- Order matters in exactly one respect: every module installs itself as a
     -- Frames handler, and Frames runs them in registration order, so Skin has
     -- to be first - it is the one that takes Blizzard's textures down, and

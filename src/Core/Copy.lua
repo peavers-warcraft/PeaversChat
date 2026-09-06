@@ -406,7 +406,11 @@ local function Apply(frame)
 
     local button = frame.peaversCopyButton
     button:ClearAllPoints()
-    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
+    -- Tucked inside the window's own right and top insets, so it moves with
+    -- the padding rather than sitting on the border at one setting and over the
+    -- text at another.
+    local pad = PC.Skin.Pad()
+    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(pad.right + 2), -(pad.top + 2))
 
     ApplyVisibility(frame)
 end
