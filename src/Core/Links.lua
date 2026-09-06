@@ -298,12 +298,14 @@ local function OnHyperlinkLeave(_, link)
 end
 
 local function Apply(frame)
-    -- A window adopted after Sync ran - a whisper tab, a temporary window - has
-    -- to be wrapped as it appears, or links work everywhere except the tab that
-    -- opened last.
-    if PC.Config.enabled and PC.Config.urlLinks and not Links:HasSurrendered() then
-        HookFrame(frame)
-    end
+    -- Sync, not a bare hook. This runs whenever a window is adopted, and
+    -- adoption happens on PLAYER_ENTERING_WORLD - the same event that carries
+    -- you into the dungeon where the hook must not be installed. Deciding here
+    -- with a copy of the conditions is how the instance guard got undone
+    -- milliseconds after it was applied: Sync took the hook out on zone-in and
+    -- the refresh that followed put it straight back. There is one answer to
+    -- "should this be hooked", and it lives in Sync.
+    Links:Sync()
 
     if frame.__pcHyperlinkHooked then return end
     if type(frame.HookScript) ~= "function" then return end
