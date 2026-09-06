@@ -588,13 +588,45 @@ function ConfigUI:BuildButtonsPage(parentFrame)
 end
 
 --------------------------------------------------------------------------------
--- Copy and channels
+-- Links, copy and channels
 --------------------------------------------------------------------------------
 
 function ConfigUI:BuildCopyPage(parentFrame)
     local y = -10
     local indent = 25
     local width = ResolveWidth(parentFrame, indent)
+
+    local _, newY = W:CreateSectionHeader(parentFrame, "Links", indent, y)
+    y = newY - 8
+
+    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, true)
+    y = afterLinks
+
+    local _, afterBrackets = Toggle(parentFrame, "Put them in brackets", "urlBrackets", y, indent, width, true)
+    y = afterBrackets - 4
+
+    local url = PC.Config.urlColor or {}
+    local urlPicker = W:CreateColorPicker(parentFrame, "Link colour", {
+        r = url.r or 0.506, g = url.g or 0.549, b = url.b or 0.973,
+        width = width,
+        onChange = function(r, g, b)
+            PC.Config.urlColor = { r = r, g = g, b = b }
+            Apply()
+        end,
+    })
+    urlPicker:SetPoint("TOPLEFT", indent, y)
+    y = y - 40
+
+    local linkNote = W:CreateLabel(parentFrame,
+        "Clicking one opens the copy window with the address selected: an addon " ..
+            "cannot open a browser, so click, Ctrl+C, Escape is as close as the " ..
+            "game gets. The matcher walks a message one word at a time and skips " ..
+            "anything containing a pipe, which is every item link and colour run " ..
+            "the game can emit, so it cannot damage one.",
+        { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
+    linkNote:SetPoint("TOPLEFT", indent, y)
+    linkNote:SetWidth(width)
+    y = y - 60
 
     local _, copyY = W:CreateSectionHeader(parentFrame, "Copy", indent, y)
     y = copyY - 8
@@ -730,7 +762,7 @@ function ConfigUI:GetPages()
         { key = "tabs", label = "Tabs", builder = function(f) ConfigUI:BuildTabsPage(f) end },
         { key = "editbox", label = "Edit box", builder = function(f) ConfigUI:BuildEditBoxPage(f) end },
         { key = "buttons", label = "Buttons", builder = function(f) ConfigUI:BuildButtonsPage(f) end },
-        { key = "copy", label = "Copy and channels", builder = function(f) ConfigUI:BuildCopyPage(f) end },
+        { key = "copy", label = "Links and copy", builder = function(f) ConfigUI:BuildCopyPage(f) end },
     }
 end
 

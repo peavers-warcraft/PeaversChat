@@ -19,6 +19,7 @@ local function InstallHooks()
     PC.Frames:InstallHooks()
     PC.Tabs:InstallHooks()
     PC.EditBox:InstallHooks()
+    PC.Links:InstallHooks()
 end
 
 --- The smallest thing this addon can be while still being itself: a flat
@@ -38,6 +39,7 @@ local MINIMAL = {
     styleEditBox = false,       -- the edit box left where the client put it
     copyButton = false,         -- no button parented to the dock
     shortChannelNames = false,  -- the client's own channel wording
+    urlLinks = false,           -- no filter on the client's chat events
     maxLines = 0,               -- the message buffer never reallocated
     edgeToEdge = false,         -- no protected function called or hooked
 
@@ -64,15 +66,17 @@ local TRY_GROUPS = {
         "showMenuButton", "showSocialButton", "showScrollButtons",
         "showBottomButton", "showVoiceButtons", "showCombatLogBar",
     },
+    links = { "urlLinks" },
     channels = { "shortChannelNames" },
     buffer = { "maxLines" },
 }
 
-local TRY_ORDER = { "tabs", "buttons", "copy", "editbox", "channels", "buffer" }
+local TRY_ORDER = { "tabs", "buttons", "copy", "editbox", "links", "channels", "buffer" }
 
 --- Re-apply everything after a settings change. The bisect commands all end
 --- here, so they cannot drift apart over which modules need telling.
 local function Refresh()
+    PC.Links:Refresh()
     PC.Channels:Apply()
     PC.Buttons:Refresh()
     PC.Frames:Refresh()
@@ -269,14 +273,22 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         -- chat line says, so this is now the whole of "stop altering my chat".
         -- A toggle, because a diagnostic you cannot undo is a trap.
         local cfg = PC.Config
-        cfg.shortChannelNames = not cfg.shortChannelNames
+        local goingSafe = cfg.urlLinks or cfg.shortChannelNames
+
+        cfg.urlLinks = not goingSafe
+        cfg.shortChannelNames = not goingSafe
         cfg:Save()
 
+        PC.Links:Resume()
+        PC.Links:Sync()
         if cfg.shortChannelNames then PC.Channels:Apply() else PC.Channels:Restore() end
 
-        Utils.Print(PC, cfg.shortChannelNames
-            and "Channel abbreviations are back."
-            or "Channel abbreviations off. Nothing this addon does now changes what a chat line says.")
+        Utils.Print(PC, goingSafe
+            and string.format("Safe mode on. URL filter %s, channel wording is the client's own. "
+                .. "Nothing this addon does now touches an incoming message.",
+                PC.Links:IsInstalled() and "STILL INSTALLED - this build cannot remove it"
+                    or "removed from every chat event")
+            or "Safe mode off.")
     end,
     trace = function(rest)
         -- Counts chat events on a frame of our own, outside the filter system,
@@ -348,9 +360,9 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         Utils.Print(PC, "Chat windows reset to the client's own layout, then reskinned.")
     end,
     info = function()
-        Utils.Print(PC, string.format("%d chat window(s) skinned. Channel abbreviations: %s. Copy button: %s.",
+        Utils.Print(PC, string.format("%d chat window(s) skinned. Clickable URLs: %s. Copy button: %s.",
             PC.Frames:Count(),
-            PC.Config.shortChannelNames and "on" or "off",
+            PC.Config.urlLinks and "on" or "off",
             PC.Config.copyButton and "on" or "off"))
     end,
     debug = function()
@@ -367,7 +379,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat minimal - Toggle down to just a background and a font")
         print("  /pchat without <group> - Take one group away, cumulatively, to find a culprit")
         print("  /pchat try <group> - Hand one group back while minimal")
-        print("  /pchat safe - Toggle the channel abbreviations off")
+        print("  /pchat safe - Toggle off everything that touches an incoming message")
         print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat trace - Count chat events as they arrive, then report")
         print("  /pchat style - Show where the window background is drawn")
@@ -438,6 +450,7 @@ PeaversCommons.Events:Init(addonName, function()
     PC.Tabs:Initialize()
     PC.EditBox:Initialize()
     PC.Buttons:Initialize()
+    PC.Links:Initialize()
     PC.Copy:Initialize()
     -- Registers a Frames handler, so it must come before Frames:Initialize()
     -- adopts the windows - registration replays over anything already adopted,

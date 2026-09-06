@@ -11,13 +11,15 @@ It is meant to be finished out of the box. Install it and chat already looks the
 
 ## Measured performance
 
-Chat is the one part of the UI that never stops, so the claim worth testing is
-not that this addon is small — it is that **a chat message costs nothing,
-because nothing here is in its way**.
+Chat is the one part of the UI that never stops. Every line that arrives goes
+through whatever filters are installed on it, and on a busy raid night that is
+hundreds a minute — so the claim worth testing is that **a chat message costs
+the client nothing at all**.
 
 The table below is where that is checked rather than asserted, and the case
-behind it fails the build if a message filter is ever installed or the client's
-chat handler is ever replaced. It is regenerated on every push by the
+behind it also fails the build if the client's own chat handler is ever replaced
+or a repaint ever starts happening per combat-log line. It is regenerated on
+every push by the
 [Ultra Performance harness](https://github.com/peavers-code/peavers-warcraft-workflows/tree/master/perf-harness),
 which loads this addon's real source into a Lua VM, skins three chat windows,
 asks it to re-apply itself two hundred times, then hunts down every `OnUpdate`
@@ -31,7 +33,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 159.5 KB | 176 KB | pass |
+| Packaged size | 186.4 KB | 208 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -41,18 +43,20 @@ Scenarios driven against the real addon source, outside the game:
 
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
-| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 577 calls to skin every window at login, once |
+| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the matcher is pure string work and never touches a widget |
+| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 583 calls to skin every window at login, once |
 | combat log flooding, 300 lines/sec | 0.00 | 1.1 | 1 repaint(s) for 3000 combat log lines and 0 for 3000 dock updates: after the first, there is nothing to say |
 | told to re-apply, 1/sec | 0.00 | 21.0 | 21.0 calls to re-apply the skin to every window when nothing has changed |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>4,109 lines of Lua · 159.5 KB packaged · no bundled libraries</sub>
+<sub>4,796 lines of Lua · 186.4 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
 The zeroes are the point, so they are worth explaining:
 
-- **A chat message costs nothing, because nothing here touches one.** No message event filter, no wrapper on a chat frame's `AddMessage`, no replacement of the client's chat handler. The addon draws a background, moves a button and changes a font; a line of chat arrives exactly as it would with the addon uninstalled. The perf case asserts this rather than claiming it.
+- **A chat message costs nothing.** The URL matcher is pure string work, and it bails on a plain substring search before any pattern matching unless the line contains a dot or an at-sign. It never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
+- **Nothing repaints per chat line.** The client calls `FCF_StartAlertFlash` for every message arriving in a window that is not on screen — every combat-log line during a pull. Both hooks on that path decide they have nothing to do in a single field read, and the case fails the build if that ever regresses: 3000 combat-log lines cause one repaint, and 3000 dock updates cause none.
 - **Nothing runs per frame.** There is no `OnUpdate` anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved.
 - **The skin is built once.** One backdrop frame per window carrying five textures — a fill and four hairline edges — created the first time the window is seen and afterwards only recoloured and re-anchored.
 - **A hidden button costs one event handler.** Buttons are hidden by an `OnShow` hook rather than a poll, so the cost lands only when the client was going to show one anyway.
@@ -67,6 +71,7 @@ than anybody switches tabs.
 <!-- peavers:features -->
 - A flat black chat window with a 1px hairline border, matching the rest of the Peavers UI
 - Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading, in a font of your choosing
+- Clickable URLs, with a matcher careful enough not to turn "ok.thanks" into a link
 - Tabs sit inside the window: the background reaches up over the tab strip rather than stopping underneath it
 - Tabs stay readable instead of fading out when the mouse is elsewhere
 - A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
@@ -83,7 +88,7 @@ than anybody switches tabs.
 <!-- peavers:usage -->
 Chat is skinned as soon as you log in. Everything else is optional and lives in the settings, under `/pchat`.
 
-Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are uppercase text with an accent underline, and there is a small copy mark in the top-right corner of each window — faint until you hover the window, and it takes no space of its own.
+Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are uppercase text with an accent underline, URLs are clickable, and there is a small copy mark in the top-right corner of each window — faint until you hover the window, and it takes no space of its own.
 
 ### Slash Commands
 
@@ -124,35 +129,24 @@ there is something to scroll.
 
 ### What it deliberately does not do
 
-It does not touch a chat message. At all.
+It does not rewrite the game's chat format strings, and it does not abbreviate
+channel names.
 
-There is no message event filter, no wrapper on a chat frame's `AddMessage`, the
-client's own chat handler is left where it is, and no chat format string is
-rewritten. A line of chat arrives the same way it would with this addon
-uninstalled, and the performance case asserts the first three of those on every
-push rather than taking them on trust.
+That one is worth writing down, because the string it produced always looked
+correct. `CHAT_PARTY_GET` is `|Hchannel:party|h[Party]|h %s: `, and shortening
+`[Party]` to `[P]` leaves a valid string: same argument count, hyperlink wrapper
+intact, only a word changed. But that bracket is the *display text of a
+hyperlink*, and the game checks that a hyperlink shows what it is supposed to
+show. Messages in every channel whose format string carries such a link stopped
+appearing — while `CHAT_SAY_GET`, which is `%s says: ` and has no link in it,
+kept working throughout.
 
-That is a retreat, not a principle I started with, and it was paid for.
+Changing a word is not a safe edit when the word is inside a link.
 
-Clickable URLs were the first casualty: making one clickable means altering the
-line, and every way of doing that ended with chat failing inside a Mythic+.
-Abbreviating channel names was the second, and it turned out to be the actual
-culprit — for a reason worth writing down, because the string it produced always
-looked correct.
-
-`CHAT_PARTY_GET` is `|Hchannel:party|h[Party]|h %s: `. Shortening `[Party]` to
-`[P]` leaves a valid string with the same argument count and the hyperlink
-wrapper intact. But that bracket is the *display text of a hyperlink*, and the
-game checks that a hyperlink shows what it is supposed to show. Messages in
-every channel whose format string carries such a link stopped appearing.
-`CHAT_SAY_GET` is `%s says: ` — no link, nothing to check — and say was the one
-channel that never broke.
-
-Changing a word is not a safe edit when the word is inside a link. Both features
-can come back done differently; neither is worth guessing at again.
-
-Class colouring, message routing and channel membership are all left to the
-client.
+Beyond that, the addon adds to a message and never rebuilds one. URLs are
+matched and wrapped by a filter on the client's own chat events, which is the
+documented way to alter a line; class colouring, message routing and channel
+membership are all left to the client.
 
 ## Installation
 

@@ -308,6 +308,13 @@ _G.ChatFrame_MessageEventHandler = function(frame, _, message)
 end
 local blizzardHandler = _G.ChatFrame_MessageEventHandler
 
+local filters = {}
+_G.ChatFrame_AddMessageEventFilter = function(event, fn)
+    filters[event] = filters[event] or {}
+    table.insert(filters[event], fn)
+end
+_G.ChatFrame_RemoveMessageEventFilter = function() end
+
 -- The buttons the addon hides.
 for _, name in ipairs({
     "ChatFrameMenuButton", "QuickJoinToastButton", "ChatFrameChannelButton",
@@ -412,6 +419,9 @@ PC.Config = {
     showBottomButton = true,
     showVoiceButtons = false,
     showCombatLogBar = false,
+    urlLinks = true,
+    urlColor = { r = 0.506, g = 0.549, b = 0.973 },
+    urlBrackets = true,
     copyButton = true,
     copyButtonVisibility = "dim",
     copyIconSize = 11,
@@ -432,6 +442,7 @@ Load("Core/Skin.lua")
 Load("Core/Tabs.lua")
 Load("Core/EditBox.lua")
 Load("Core/Buttons.lua")
+Load("Core/Links.lua")
 Load("Core/Copy.lua")
 Load("Core/Channels.lua")
 
@@ -449,6 +460,7 @@ PC.Skin:Initialize()
 PC.Tabs:Initialize()
 PC.EditBox:Initialize()
 PC.Buttons:Initialize()
+PC.Links:Initialize()
 PC.Copy:Initialize()
 
 PC.Frames:Initialize()
@@ -468,7 +480,8 @@ assert(dock.peaversCopyButton, "the copy button was never built on the strip hos
 assert(chatFrames[1].__pcAddMessage == nil,
     "a Blizzard chat frame had its AddMessage replaced - nothing here may touch the message path")
 assert(_G.ChatFrame_MessageEventHandler == blizzardHandler,
-    "the client's chat handler was replaced - nothing here may touch the message path")
+    "the client's chat handler was replaced - the documented seam is a message filter")
+assert(PC.Links:IsInstalled(), "the URL filter was never installed")
 assert(_G.CHAT_GUILD_GET:find("%[G%]"), "channel names were not abbreviated")
 assert(_G.ChatFrameMenuButton:IsShown() == false, "the menu button is still on screen")
 assert(dock.peaversCopyButton:IsShown(), "the copy button is hidden")
@@ -493,6 +506,44 @@ local TAB_SWITCHES_PER_SECOND = 1
 Stubs.ResetCounts()
 for i = 1, 200 do SwitchTab(i) end
 local perTabSwitch = Stubs.TotalCalls() / 200
+
+--------------------------------------------------------------------------------
+-- A chat message
+--
+-- Every line that arrives goes through whatever filters are installed on it, so
+-- the honest question is what one costs. Half the sample carries a URL and half
+-- does not, which is roughly what chat looks like and stops the cheap early bail
+-- from flattering the number.
+--------------------------------------------------------------------------------
+
+local SAMPLE = {
+    "has anyone got a link for the weakaura",
+    "check https://wago.io/abcdef for the import string",
+    "pull in 3",
+    "the guide is at wowhead.com/guide/whatever, read it",
+    "ok.thanks that worked",
+    "nice one",
+    "www.warcraftlogs.com/reports/abc123 if you want the parse",
+    "brb 2 min",
+}
+
+local MESSAGES_PER_SECOND = 10
+
+local messageFilter = filters.CHAT_MSG_CHANNEL[1]
+
+Stubs.ResetCounts()
+for i = 1, 400 do
+    messageFilter(chatFrames[1], "CHAT_MSG_CHANNEL",
+        SAMPLE[((i - 1) % #SAMPLE) + 1], "Peavers", "Common", "5. LookingForGroup")
+end
+local perMessage = Stubs.TotalCalls() / 400
+
+do
+    local _, rewritten = messageFilter(chatFrames[1], "CHAT_MSG_CHANNEL",
+        "see www.example.com", "Peavers")
+    assert(rewritten and rewritten:find("|Hurl:", 1, true),
+        "the filter is installed but is not linking anything")
+end
 
 --------------------------------------------------------------------------------
 -- A big pull
@@ -627,6 +678,15 @@ end
 local idleCalls, handlerCount = IdleCallsPerSecond()
 
 return {
+    {
+        name = "chat flowing, 10 messages/sec",
+        callsPerFrame = 0,
+        callsPerSecond = perMessage * MESSAGES_PER_SECOND,
+        idleCallsPerSecond = 0,
+        notes = string.format(
+            "%.2f client calls per message: the matcher is pure string work and never touches a widget",
+            perMessage),
+    },
     {
         name = "switching tabs, 1/sec",
         callsPerFrame = 0,
