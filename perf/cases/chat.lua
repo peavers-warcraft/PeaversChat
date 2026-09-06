@@ -494,6 +494,65 @@ for i = 1, 200 do SwitchTab(i) end
 local perTabSwitch = Stubs.TotalCalls() / 200
 
 --------------------------------------------------------------------------------
+-- A big pull
+--
+-- The scenario this addon did not have and badly needed.
+--
+-- The client calls FCF_StartAlertFlash for every message that arrives in a
+-- chat window which is not the one on screen. A docked combat log is exactly
+-- that window, and a Mythic+ pull puts hundreds of lines a second into it. Any
+-- hook on that function is on the path of every one of them.
+--
+-- Three hundred a second is a busy pull. The number to watch is not the total
+-- but the shape: the first line of a flash does real work and every line after
+-- it must do none, because the tab is already flashing and there is nothing to
+-- say.
+--------------------------------------------------------------------------------
+
+local COMBAT_LOG_LINES_PER_SECOND = 300
+
+-- Counting client calls is not enough here, and finding that out is the reason
+-- this scenario exists twice. The work this hook used to do per line was pure
+-- Lua - building a string to compare against the last one - and made no client
+-- calls at all once it decided nothing had changed. The harness saw a flat zero
+-- both before and after the fix. So what is counted is how many times the
+-- repaint is entered, which is the thing that was actually happening three
+-- thousand times.
+local paints = 0
+do
+    local realPaint = PC.Tabs.Paint
+    PC.Tabs.Paint = function(self, tab)
+        paints = paints + 1
+        return realPaint(self, tab)
+    end
+end
+
+local function FloodCombatLog(lines)
+    -- The combat log window is docked and not selected, which is what makes the
+    -- client flash its tab.
+    local logFrame = chatFrames[2]
+
+    _G.FCF_StopAlertFlash(logFrame)
+
+    paints = 0
+    Stubs.ResetCounts()
+    for _ = 1, lines do
+        _G.FCF_StartAlertFlash(logFrame)
+    end
+    return Stubs.TotalCalls() / lines, paints
+end
+
+FloodCombatLog(50)
+local perCombatLogLine, floodPaints = FloodCombatLog(3000)
+
+-- The guard, asserted rather than described. Three thousand lines into a
+-- flashing tab is one repaint; anything more means the hook has gone back to
+-- doing work per line, which is what tanked a Mythic+ pull.
+assert(floodPaints <= 2,
+    ("%d repaints for 3000 combat log lines - the alert-flash hook is working per line again")
+        :format(floodPaints))
+
+--------------------------------------------------------------------------------
 -- Being told to look again
 --
 -- The client fires UPDATE_CHAT_WINDOWS on every visit to the options panel,
@@ -556,6 +615,15 @@ return {
         notes = string.format(
             "%.0f calls to repaint the whole tab row; %d calls to skin every window at login, once",
             perTabSwitch, loginCalls),
+    },
+    {
+        name = "combat log flooding, 300 lines/sec",
+        callsPerFrame = 0,
+        callsPerSecond = perCombatLogLine * COMBAT_LOG_LINES_PER_SECOND,
+        idleCallsPerSecond = 0,
+        notes = string.format(
+            "%d repaint(s) for 3000 lines, %.4f client calls per line: after the first, every line has nothing to say",
+            floodPaints, perCombatLogLine),
     },
     {
         name = "told to re-apply, 1/sec",

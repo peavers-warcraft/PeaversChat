@@ -403,20 +403,29 @@ function Tabs:InstallHooks()
     if not flashHooked and CanColorFlash() then
         flashHooked = true
 
+        -- The client calls this for every message arriving in a window that is
+        -- not the one on screen. In a Mythic+ that is every line of the combat
+        -- log, thousands of them on a big pull, and this hook is on the path of
+        -- all of them.
+        --
+        -- So the first thing it does is notice it has nothing to do. A tab that
+        -- is already flashing does not need to be told again, and the check is
+        -- one field read against a repaint that could not help but allocate a
+        -- string to work out it was going to change nothing.
         hooksecurefunc(StartFn(), function(frame)
             local tab = Frames:TabFor(frame)
-            if tab then
-                tab.__pcFlashing = true
-                Tabs:Paint(tab)
-            end
+            if not tab or tab.__pcFlashing then return end
+
+            tab.__pcFlashing = true
+            Tabs:Paint(tab)
         end)
 
         hooksecurefunc("FCF_StopAlertFlash", function(frame)
             local tab = Frames:TabFor(frame)
-            if tab then
-                tab.__pcFlashing = nil
-                Tabs:Paint(tab)
-            end
+            if not tab or not tab.__pcFlashing then return end
+
+            tab.__pcFlashing = nil
+            Tabs:Paint(tab)
         end)
     end
 end
