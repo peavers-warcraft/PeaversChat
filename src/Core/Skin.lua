@@ -569,6 +569,13 @@ local function ClearClamp(frame)
 end
 
 local function HookClamp(frame)
+    -- Not installed unless the feature is wanted. This used to hook regardless
+    -- and let ClearClamp decline, which meant turning the setting off left a
+    -- hook on a protected function sitting on every chat window with no way to
+    -- get rid of it short of a reload. A setting that cannot uninstall what it
+    -- installed is not a setting, it is a one-way door.
+    if not PC.Config.enabled or not PC.Config.edgeToEdge then return end
+
     if frame.__pcClampHooked then return end
     if type(frame.SetClampRectInsets) ~= "function" then return end
 

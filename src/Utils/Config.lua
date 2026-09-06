@@ -55,9 +55,16 @@ local PC_DEFAULTS = {
     padding = 6,
     paddingSplit = false,
 
+    -- Off, and the first suspect for chat failing in Mythic+.
+    --
     -- Blizzard gives every chat window a clamping inset, which is why dragging
     -- one to the left of the screen stops short against nothing you can see.
-    edgeToEdge = true,
+    -- Zeroing it frees the window - but SetClampRectInsets is a protected
+    -- function, and this both calls it and hooks it on every chat window. It
+    -- arrived in the first build after the last one confirmed working in a key,
+    -- and it is the only thing added since that touches a protected API rather
+    -- than drawing a texture. Off until that is ruled in or out.
+    edgeToEdge = false,
 
     ----------------------------------------------------------------------------
     -- Text
