@@ -374,9 +374,14 @@ PeaversCommons.Events:Init(addonName, function()
         PC.Config:Save()
     end
 
-    if not PC.Config.edgeToEdgeWithdrawn then
-        PC.Config.edgeToEdge = false
-        PC.Config.edgeToEdgeWithdrawn = true
+    -- Given back. It was withdrawn on suspicion while chat was failing in
+    -- Mythic+; the cause turned out to be the channel abbreviations, and the
+    -- version that returns here does not hook the protected function that made
+    -- it worth suspecting. Anybody whose setting was forced off gets it back
+    -- once, because it was taken away without being asked.
+    if PC.Config.edgeToEdgeWithdrawn then
+        PC.Config.edgeToEdge = true
+        PC.Config.edgeToEdgeWithdrawn = false
         PC.Config:Save()
     end
 

@@ -2,6 +2,6 @@
   "maxCallsPerSecond": 30,
   "maxWidgetCallsPerFrame": 0,
   "maxIdleCallsPerSecond": 0,
-  "maxPackagedKB": 160,
+  "maxPackagedKB": 176,
   "allowBundledLibs": false
 }

@@ -187,17 +187,18 @@ function ConfigUI:BuildAppearancePage(parentFrame)
     y = y - 6
 
     local _, afterEdge = Toggle(parentFrame, "Let the window reach the screen edge",
-        "edgeToEdge", y, indent, width, false)
+        "edgeToEdge", y, indent, width, true)
     y = afterEdge - 4
 
     local edgeNote = W:CreateLabel(parentFrame,
         "Blizzard reserves a margin around every chat window, which is why "
             .. "dragging one to the left of the screen stops short against "
-            .. "nothing you can see. This clears it. "
-            .. "Off by default, and not for taste: clearing that margin means "
-            .. "calling and hooking a protected function on every chat window, "
-            .. "and it is the current suspect for chat failing in Mythic+. "
-            .. "Leave it off unless you have been asked to test it.",
+            .. "nothing you can see. This clears it, once per window and out "
+            .. "of combat, because the client protects that call while you are "
+            .. "fighting. If the game ever puts its own margin back, the window "
+            .. "stops reaching the edge until the next reload - which is the "
+            .. "price of not permanently hooking a protected function to stop "
+            .. "it.",
         { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
     edgeNote:SetPoint("TOPLEFT", indent, y)
     edgeNote:SetWidth(width)

@@ -547,49 +547,35 @@ end
 --
 -- Blizzard gives every chat window a clamping inset, which is why dragging one
 -- to the left of the screen stops short against nothing you can see. Zeroing
--- the insets lets the window sit against the edge, which is where a lot of
--- people want it.
+-- the insets frees it.
 --
--- Two things this has to respect. SetClampRectInsets is protected in combat, so
--- the attempt is skipped there rather than throwing - the client reasserts the
--- insets on its own schedule and the hook below catches the next one. And the
--- hook calls the widget method captured before the hook was installed, so
--- re-zeroing from inside the hook does not re-enter it.
+-- Done once per window and never hooked. An earlier version installed a
+-- hooksecurefunc on SetClampRectInsets so the client could never re-assert its
+-- own margin - which meant a hook on a protected function sitting on every chat
+-- window for the session, and no way to take it off again. It was the wrong
+-- trade even before it became a suspect: the cost of not hooking is that if the
+-- client ever does re-assert its insets the window stops reaching the edge
+-- until the next reload, and the cost of hooking was permanently touching a
+-- function the client protects for a reason.
+--
+-- Protected in combat, so the attempt is skipped there and made on the next
+-- refresh instead. The client's original insets are remembered, so switching
+-- the addon off gives them back.
 --------------------------------------------------------------------------------
-
-local rawSetClamp = nil
 
 local function ClearClamp(frame)
     if not PC.Config.enabled or not PC.Config.edgeToEdge then return end
+    if frame.__pcClampCleared then return end
     if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then return end
-
-    local setter = rawSetClamp or frame.SetClampRectInsets
-    if type(setter) ~= "function" then return end
-    pcall(setter, frame, 0, 0, 0, 0)
-end
-
-local function HookClamp(frame)
-    -- Not installed unless the feature is wanted. This used to hook regardless
-    -- and let ClearClamp decline, which meant turning the setting off left a
-    -- hook on a protected function sitting on every chat window with no way to
-    -- get rid of it short of a reload. A setting that cannot uninstall what it
-    -- installed is not a setting, it is a one-way door.
-    if not PC.Config.enabled or not PC.Config.edgeToEdge then return end
-
-    if frame.__pcClampHooked then return end
     if type(frame.SetClampRectInsets) ~= "function" then return end
 
-    frame.__pcClampHooked = true
-    rawSetClamp = rawSetClamp or frame.SetClampRectInsets
+    if frame.__pcClamp == nil and frame.GetClampRectInsets then
+        local ok, left, right, top, bottom = pcall(frame.GetClampRectInsets, frame)
+        frame.__pcClamp = (ok and left) and { left, right, top, bottom } or false
+    end
 
-    -- Remember what the client wanted, so switching the addon off can give it
-    -- back. Wrapped because the getter is not on every build.
-    local ok, left, right, top, bottom = pcall(frame.GetClampRectInsets, frame)
-    if ok and left then frame.__pcClamp = { left, right, top, bottom } end
-
-    hooksecurefunc(frame, "SetClampRectInsets", function(self)
-        ClearClamp(self)
-    end)
+    frame.__pcClampCleared = true
+    pcall(frame.SetClampRectInsets, frame, 0, 0, 0, 0)
 end
 
 --------------------------------------------------------------------------------
@@ -634,7 +620,7 @@ local function Apply(frame)
     -- The strip keeps its own signature: it depends on measurements as well as
     -- settings, so it has to be asked separately.
     Skin:RefreshStrip(frame)
-    HookClamp(frame)
+    ClearClamp(frame)
 
     local signature = table.concat({
         cfg.fontSize, cfg.fontOutline or "", cfg.shadow and 1 or 0,
@@ -651,8 +637,6 @@ local function Apply(frame)
         if frame.SetBackdropColor then frame:SetBackdropColor(0, 0, 0, 0) end
         if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(0, 0, 0, 0) end
     end)
-
-    ClearClamp(frame)
 
     ApplyFont(frame)
 
@@ -702,8 +686,11 @@ local function Restore(frame)
     RestoreFont(frame)
 
     local clamp = frame.__pcClamp
-    if clamp and rawSetClamp and not (type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()) then
-        pcall(rawSetClamp, frame, clamp[1], clamp[2], clamp[3], clamp[4])
+    if clamp and frame.SetClampRectInsets
+        and not (type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()) then
+        pcall(frame.SetClampRectInsets, frame, clamp[1], clamp[2], clamp[3], clamp[4])
+        frame.__pcClampCleared = nil
+        frame.__pcClamp = nil
     end
     Skin.ReviveChrome(frame)
 

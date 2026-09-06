@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 159.8 KB | 160 KB | pass |
+| Packaged size | 159.5 KB | 176 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -41,12 +41,12 @@ Scenarios driven against the real addon source, outside the game:
 
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
-| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 571 calls to skin every window at login, once |
+| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 577 calls to skin every window at login, once |
 | combat log flooding, 300 lines/sec | 0.00 | 1.1 | 1 repaint(s) for 3000 combat log lines and 0 for 3000 dock updates: after the first, there is nothing to say |
 | told to re-apply, 1/sec | 0.00 | 21.0 | 21.0 calls to re-apply the skin to every window when nothing has changed |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>4,122 lines of Lua · 159.8 KB packaged · no bundled libraries</sub>
+<sub>4,109 lines of Lua · 159.5 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
@@ -72,7 +72,6 @@ than anybody switches tabs.
 - A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
 - Every button around the frame — chat menu, group finder, scroll arrows, voice, combat log bar — individually hideable, and hidden by default
 - The edit box moved out from under the last line of chat, with a border coloured by the channel you are about to speak in
-- Channel names abbreviated: `[Guild]` becomes `[G]`, `[Instance Leader]` becomes `[IL]`
 - Arrow keys that move the cursor rather than scrolling chat history
 - 1000 lines of history kept instead of Blizzard's 128, so the copy button has something to copy
 - Adjustable font, size, outline, opacity, padding and colours
@@ -127,22 +126,30 @@ there is something to scroll.
 
 It does not touch a chat message. At all.
 
-There is no message event filter, no wrapper on a chat frame's `AddMessage`, and
-the client's own chat handler is left exactly where it is. A line of chat arrives
-the same way it would with this addon uninstalled, and the performance case
-asserts that on every push rather than taking it on trust.
+There is no message event filter, no wrapper on a chat frame's `AddMessage`, the
+client's own chat handler is left where it is, and no chat format string is
+rewritten. A line of chat arrives the same way it would with this addon
+uninstalled, and the performance case asserts the first three of those on every
+push rather than taking them on trust.
 
-That is a deliberate retreat rather than a design principle I started with.
-Making URLs clickable means altering the line, three ways of doing it were tried
-here, and every one of them was followed by chat failing inside Mythic+. Until
-that is understood, the safest chat addon is one that only draws.
+That is a retreat, not a principle I started with, and it was paid for.
 
-The one thing that does change what a line *says* is the channel abbreviation,
-and that is a format string the client reads, not a hook in its path — `[Guild]`
-becomes `[G]` because the word in the string changed. Numbered public channels
-keep Blizzard's own naming: their bracket is assembled per message rather than
-read from a string, and taking that over means owning the formatting of every
-line in the game.
+Clickable URLs were the first casualty: making one clickable means altering the
+line, and every way of doing that ended with chat failing inside a Mythic+.
+Abbreviating channel names was the second, and it turned out to be the actual
+culprit — for a reason worth writing down, because the string it produced always
+looked correct.
+
+`CHAT_PARTY_GET` is `|Hchannel:party|h[Party]|h %s: `. Shortening `[Party]` to
+`[P]` leaves a valid string with the same argument count and the hyperlink
+wrapper intact. But that bracket is the *display text of a hyperlink*, and the
+game checks that a hyperlink shows what it is supposed to show. Messages in
+every channel whose format string carries such a link stopped appearing.
+`CHAT_SAY_GET` is `%s says: ` — no link, nothing to check — and say was the one
+channel that never broke.
+
+Changing a word is not a safe edit when the word is inside a link. Both features
+can come back done differently; neither is worth guessing at again.
 
 Class colouring, message routing and channel membership are all left to the
 client.
