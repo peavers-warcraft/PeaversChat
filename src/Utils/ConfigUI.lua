@@ -254,7 +254,11 @@ function ConfigUI:BuildAppearancePage(parentFrame)
     y = y - 62
 
     local maxLines = W:CreateSlider(parentFrame, "Lines of history kept", {
-        min = 128, max = 5000, step = 128,
+        min = 0, max = 5000, step = 128,
+        format = function(v)
+            if v <= 0 then return "Leave the game's own" end
+            return tostring(v)
+        end,
         value = PC.Config.maxLines or 1000,
         width = width,
         onChange = function(value)
@@ -268,7 +272,10 @@ function ConfigUI:BuildAppearancePage(parentFrame)
     local note = W:CreateLabel(parentFrame,
         "Changing the number of lines kept empties the window it applies to - " ..
             "the client reallocates the buffer rather than resizing it. New " ..
-            "messages arrive normally afterwards.",
+            "messages arrive normally afterwards. At the far left the " ..
+            "addon does not touch the buffer at all, which is worth knowing " ..
+            "because it is the only thing here that goes near where messages " ..
+            "are kept.",
         { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
     note:SetPoint("TOPLEFT", indent, y)
     note:SetWidth(width)

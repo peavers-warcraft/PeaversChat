@@ -655,7 +655,13 @@ local function Apply(frame)
     -- Guarded on the value rather than called every time: SetMaxLines discards
     -- the buffer, so calling it on every refresh would quietly wipe the history
     -- every time somebody moved a slider.
-    if frame.SetMaxLines and cfg.maxLines and frame.__pcMaxLines ~= cfg.maxLines then
+    -- 0 means "do not touch it at all", which is different from setting it to
+    -- whatever the client's default happens to be: it means SetMaxLines is
+    -- never called on this frame, so the message buffer is never reallocated by
+    -- us. That distinction is the point - it is the only thing in this file
+    -- that touches where messages are kept, so it needs to be eliminable.
+    if frame.SetMaxLines and cfg.maxLines and cfg.maxLines > 0
+        and frame.__pcMaxLines ~= cfg.maxLines then
         -- Remember what the client had, because this is one of the few things
         -- here that outlives switching the addon off - and anything that
         -- outlives being switched off cannot be ruled out by switching it off,
