@@ -129,24 +129,6 @@ local PC_DEFAULTS = {
     showCombatLogBar = false,   -- Blizzard_CombatLog's gold quick-filter strip
 
     ----------------------------------------------------------------------------
-    -- Links
-    ----------------------------------------------------------------------------
-    -- Off, and staying off until the cause of chat failing in Mythic+ is known
-    -- rather than guessed at.
-    --
-    -- Three ways of altering a chat line have now been tried and all three were
-    -- followed by the same report. Each time the reasoning for the new one was
-    -- sound and each time it was beside the point, because the reasoning rested
-    -- on a single observation - chat working once with the hook removed - that
-    -- was never repeated. Off means the global chat handler is never replaced
-    -- at all, which is the only version of this feature that can be ruled out
-    -- by ruling it out.
-    urlLinks = false,
-    urlColor = { r = 0.506, g = 0.549, b = 0.973 },
-    urlBrackets = true,
-
-
-    ----------------------------------------------------------------------------
     -- Copy
     ----------------------------------------------------------------------------
     copyButton = true,

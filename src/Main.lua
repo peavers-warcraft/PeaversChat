@@ -24,10 +24,6 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Channels:Apply()
         PC.Buttons:Refresh()
         PC.Frames:Refresh()
-        -- Puts the URL filter back if anything had taken it out. Without this,
-        -- disable followed by enable leaves the addon looking on but with a
-        -- feature silently missing.
-        PC.Links:Sync()
         Utils.Print(PC, "Chat skinned.")
     end,
     disable = function()
@@ -36,39 +32,24 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Channels:Restore()
         PC.Frames:Restore()
         PC.Buttons:Refresh()
-        -- Off has to mean the filter is gone from the client's table, not that
-        -- it runs and declines. Same lesson as /pchat safe.
-        PC.Links:Sync()
         Utils.Print(PC, "Chat handed back to Blizzard. /pchat enable turns it back on.")
     end,
     copy = function()
         PC.Copy:ShowChat()
     end,
     safe = function()
-        -- A toggle, because a diagnostic you cannot undo is a trap: somebody
-        -- switches this on to answer one question and is then quietly missing
-        -- two features for the rest of the month.
+        -- Channel abbreviations are the only thing left that changes what a
+        -- chat line says, so this is now the whole of "stop altering my chat".
+        -- A toggle, because a diagnostic you cannot undo is a trap.
         local cfg = PC.Config
-        local goingSafe = cfg.urlLinks or cfg.shortChannelNames
-
-        cfg.urlLinks = not goingSafe
-        cfg.shortChannelNames = not goingSafe
+        cfg.shortChannelNames = not cfg.shortChannelNames
         cfg:Save()
 
-        PC.Links:Resume()
-        PC.Links:Sync()
-        if goingSafe then PC.Channels:Restore() else PC.Channels:Apply() end
+        if cfg.shortChannelNames then PC.Channels:Apply() else PC.Channels:Restore() end
 
-        if goingSafe then
-            Utils.Print(PC, string.format(
-                "Safe mode on. Channel abbreviations restored, URL filter %s. "
-                .. "Nothing this addon does now touches an incoming message. "
-                .. "Run /pchat safe again to put both back.",
-                PC.Links:IsInstalled() and "STILL INSTALLED - this build cannot remove it"
-                    or "removed from every chat event"))
-        else
-            Utils.Print(PC, "Safe mode off. Clickable URLs and channel abbreviations are back.")
-        end
+        Utils.Print(PC, cfg.shortChannelNames
+            and "Channel abbreviations are back."
+            or "Channel abbreviations off. Nothing this addon does now changes what a chat line says.")
     end,
     trace = function(rest)
         -- Counts chat events on a frame of our own, outside the filter system,
@@ -122,7 +103,6 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         end
         cfg:Save()
 
-        PC.Links:Refresh()
         PC.Channels:Apply()
         PC.Channels:ApplyTimestamps()
         PC.Buttons:Refresh()
@@ -141,9 +121,9 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         Utils.Print(PC, "Chat windows reset to the client's own layout, then reskinned.")
     end,
     info = function()
-        Utils.Print(PC, string.format("%d chat window(s) skinned. Links: %s. Copy button: %s.",
+        Utils.Print(PC, string.format("%d chat window(s) skinned. Channel abbreviations: %s. Copy button: %s.",
             PC.Frames:Count(),
-            PC.Config.urlLinks and "on" or "off",
+            PC.Config.shortChannelNames and "on" or "off",
             PC.Config.copyButton and "on" or "off"))
     end,
     debug = function()
@@ -157,7 +137,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat - Open settings")
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
-        print("  /pchat safe - Toggle off everything that touches an incoming message")
+        print("  /pchat safe - Toggle the channel abbreviations off")
         print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat trace - Count chat events as they arrive, then report")
         print("  /pchat style - Show where the window background is drawn")
@@ -199,7 +179,6 @@ PeaversCommons.Events:Init(addonName, function()
     PC.Tabs:Initialize()
     PC.EditBox:Initialize()
     PC.Buttons:Initialize()
-    PC.Links:Initialize()
     PC.Copy:Initialize()
 
     PC.Frames:Initialize()

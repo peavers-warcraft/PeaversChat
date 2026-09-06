@@ -24,7 +24,6 @@ end
 local function Apply()
     PC.Config:Save()
 
-    PC.Links:Refresh()
     PC.Channels:Apply()
     PC.Channels:ApplyTimestamps()
     PC.Buttons:Refresh()
@@ -518,50 +517,13 @@ function ConfigUI:BuildButtonsPage(parentFrame)
 end
 
 --------------------------------------------------------------------------------
--- Links and copy
+-- Copy and channels
 --------------------------------------------------------------------------------
 
-function ConfigUI:BuildLinksPage(parentFrame)
+function ConfigUI:BuildCopyPage(parentFrame)
     local y = -10
     local indent = 25
     local width = ResolveWidth(parentFrame, indent)
-
-    local _, newY = W:CreateSectionHeader(parentFrame, "Links", indent, y)
-    y = newY - 8
-
-    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, false)
-    y = afterLinks
-
-    local _, afterBrackets = Toggle(parentFrame, "Put them in brackets", "urlBrackets", y, indent, width, true)
-    y = afterBrackets - 4
-
-    local url = PC.Config.urlColor or {}
-    local urlPicker = W:CreateColorPicker(parentFrame, "Link colour", {
-        r = url.r or 0.506, g = url.g or 0.549, b = url.b or 0.973,
-        width = width,
-        onChange = function(r, g, b)
-            PC.Config.urlColor = { r = r, g = g, b = b }
-            Apply()
-        end,
-    })
-    urlPicker:SetPoint("TOPLEFT", indent, y)
-    y = y - 40
-
-    local linkNote = W:CreateLabel(parentFrame,
-        "Clicking one opens the copy window with the address selected: an addon " ..
-            "cannot open a browser, so click, Ctrl+C, Escape is as close as the " ..
-            "game gets. This is the only part of the addon that alters a chat " ..
-            "message, and it is off until the cause of chat failing in Mythic+ " ..
-            "is known rather than guessed at. Three ways of doing it have been " ..
-            "tried and all three were followed by the same report. Off means " ..
-            "the game's chat handler is never replaced at all - not idled, not " ..
-            "bypassed, never touched. Everything else in this addon draws a " ..
-            "background, moves a button or changes a font, and none of it can " ..
-            "affect a message.",
-        { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
-    linkNote:SetPoint("TOPLEFT", indent, y)
-    linkNote:SetWidth(width)
-    y = y - 46
 
     local _, copyY = W:CreateSectionHeader(parentFrame, "Copy", indent, y)
     y = copyY - 8
@@ -697,7 +659,7 @@ function ConfigUI:GetPages()
         { key = "tabs", label = "Tabs", builder = function(f) ConfigUI:BuildTabsPage(f) end },
         { key = "editbox", label = "Edit box", builder = function(f) ConfigUI:BuildEditBoxPage(f) end },
         { key = "buttons", label = "Buttons", builder = function(f) ConfigUI:BuildButtonsPage(f) end },
-        { key = "links", label = "Links and copy", builder = function(f) ConfigUI:BuildLinksPage(f) end },
+        { key = "copy", label = "Copy and channels", builder = function(f) ConfigUI:BuildCopyPage(f) end },
     }
 end
 

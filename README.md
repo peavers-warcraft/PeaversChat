@@ -3,7 +3,7 @@
 [![Ultra Performance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/peavers-warcraft/PeaversChat/master/.github/badges/perf.json)](https://github.com/peavers-warcraft/PeaversChat/actions/workflows/perf.yml)
 [![AddonSentry](https://addonsentry.io/api/public/repos/peavers-warcraft/PeaversChat/badge.svg)](https://addonsentry.io/dashboard/peavers-warcraft/PeaversChat)
 
-A World of Warcraft addon that redraws the chat window as a flat black box with clean text tabs, turns URLs into something you can click, puts a copy button where you can see it, and hides every piece of chrome Blizzard hangs around the frame.
+A World of Warcraft addon that redraws the chat window as a flat black box with clean text tabs, puts a copy button where you can see it, and hides every piece of chrome Blizzard hangs around the frame.
 
 Part of the **Peavers Ultra Performance** family: addons that hold themselves to a published budget, measured on every push.
 
@@ -11,18 +11,18 @@ It is meant to be finished out of the box. Install it and chat already looks the
 
 ## Measured performance
 
-Chat is the one part of the UI that never stops. Every line that arrives goes
-through whatever filters are installed on it, and on a busy raid night that is
-hundreds a minute — so the claim worth testing is not that this addon is small,
-it is that **a chat message costs the client nothing at all**.
+Chat is the one part of the UI that never stops, so the claim worth testing is
+not that this addon is small — it is that **a chat message costs nothing,
+because nothing here is in its way**.
 
-It does not, and the table below is where that is checked rather than asserted.
-It is regenerated on every push by the
+The table below is where that is checked rather than asserted, and the case
+behind it fails the build if a message filter is ever installed or the client's
+chat handler is ever replaced. It is regenerated on every push by the
 [Ultra Performance harness](https://github.com/peavers-code/peavers-warcraft-workflows/tree/master/perf-harness),
 which loads this addon's real source into a Lua VM, skins three chat windows,
-pushes four hundred messages through the filter that is actually installed, then
-hunts down every `OnUpdate` handler the addon put on any frame it created and
-ticks them for a simulated second. If any number goes outside `perf/budget.json`,
+asks it to re-apply itself two hundred times, then hunts down every `OnUpdate`
+handler the addon put on any frame it created and ticks them for a simulated
+second. If any number goes outside `perf/budget.json`,
 the build fails.
 
 <!-- perf:begin -->
@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 170.5 KB | 176 KB | pass |
+| Packaged size | 146.3 KB | 176 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -41,18 +41,17 @@ Scenarios driven against the real addon source, outside the game:
 
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
-| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: most bail on a plain substring search before any of it, and the rewrite never touches a widget |
-| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 583 calls to skin every window at login, once |
+| switching tabs, 1/sec | 0.00 | 21.9 | 22 calls to repaint the whole tab row; 577 calls to skin every window at login, once |
 | told to re-apply, 1/sec | 0.00 | 21.0 | 21.0 calls to re-apply the skin to every window when nothing has changed |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>4,397 lines of Lua · 170.5 KB packaged · no bundled libraries</sub>
+<sub>3,799 lines of Lua · 146.3 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
 The zeroes are the point, so they are worth explaining:
 
-- **A chat message costs nothing.** A message that cannot contain a URL — no dot, no at-sign — is recognised by two plain substring searches and handed straight to the client, untouched, before any of this addon's machinery runs. That is most of chat. The ones that survive that test go through a matcher that is pure string work and never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
+- **A chat message costs nothing, because nothing here touches one.** No message event filter, no wrapper on a chat frame's `AddMessage`, no replacement of the client's chat handler. The addon draws a background, moves a button and changes a font; a line of chat arrives exactly as it would with the addon uninstalled. The perf case asserts this rather than claiming it.
 - **Nothing runs per frame.** There is no `OnUpdate` anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved.
 - **The skin is built once.** One backdrop frame per window carrying five textures — a fill and four hairline edges — created the first time the window is seen and afterwards only recoloured and re-anchored.
 - **A hidden button costs one event handler.** Buttons are hidden by an `OnShow` hook rather than a poll, so the cost lands only when the client was going to show one anyway.
@@ -69,7 +68,6 @@ than anybody switches tabs.
 - Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading, in a font of your choosing
 - Tabs sit inside the window: the background reaches up over the tab strip rather than stopping underneath it
 - Tabs stay readable instead of fading out when the mouse is elsewhere
-- Clickable URLs, currently off by default while a chat problem in Mythic+ is being tracked down — it is the only feature here that alters a chat message
 - A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
 - Every button around the frame — chat menu, group finder, scroll arrows, voice, combat log bar — individually hideable, and hidden by default
 - The edit box moved out from under the last line of chat, with a border coloured by the channel you are about to speak in
@@ -85,7 +83,7 @@ than anybody switches tabs.
 <!-- peavers:usage -->
 Chat is skinned as soon as you log in. Everything else is optional and lives in the settings, under `/pchat`.
 
-Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are uppercase text with an accent underline, URLs are clickable, and there is a small copy mark in the top-right corner of each window — faint until you hover the window, and it takes no space of its own.
+Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are uppercase text with an accent underline, and there is a small copy mark in the top-right corner of each window — faint until you hover the window, and it takes no space of its own.
 
 ### Slash Commands
 
@@ -94,36 +92,13 @@ Out of the box every button around the chat frame is hidden except the one that 
 - `/pchat buttons` - Show or hide every button at once
 - `/pchat enable` / `/pchat disable` - Turn the addon on, or hand chat back to Blizzard
 - `/pchat reset` - Reset the chat layout to the client's own, then reskin it
+- `/pchat safe` - Toggle the channel abbreviations off, so nothing changes what a line says
 - `/pchat info` - Print what is currently skinned
+- `/pchat style` - Show where each window's background is drawn
+- `/pchat channels` - Show what was changed in the channel format strings
+- `/pchat trace` - Count chat events as they arrive, then report
+- `/pchat defaults` - Put every setting back to its shipped default
 <!-- /peavers:usage -->
-
-### Clickable URLs
-
-The hard part is not finding URLs. It is not finding things that are not URLs.
-
-Chat is full of text that looks like a domain if you squint — "ok.thanks",
-"trust.me", "3.5" — and a chat window that turns every other sentence into blue
-brackets is worse than one that does nothing at all. So the matcher works one
-whitespace-separated word at a time rather than running patterns over the whole
-message, which is where every homegrown URL matcher eventually eats an item
-link. Three rules do the work:
-
-- A word containing a pipe is skipped outright. That is every item link, spell, achievement, colour run and texture escape the client can emit, ruled out in one test.
-- Anything with a scheme, a `www.`, an `@` or a path is taken at face value.
-- A bare host with none of those has to end in a top-level domain from a short list — and that list deliberately leaves out the country codes that are also English words. `.no`, `.me`, `.it` and `.us` are not on it, because "yeah.no" is not a website.
-
-Clicking a link opens the copy window with the address selected. An addon cannot
-open a browser, so click, Ctrl+C, Escape is as close as the game gets.
-
-The matching happens on the line's way to the screen, in a hook on each chat
-frame's own `AddMessage`, rather than in a `ChatFrame_AddMessageEventFilter` on
-the way in. That is not a stylistic choice. The filter version stopped chat
-working in instanced content: authored messages never appeared while system
-messages, which take a different path, arrived normally. The event path is where
-the client does its restricted-data handling, and an addon standing in the
-middle of it is standing somewhere it no longer has any business being. By the
-time a line reaches `AddMessage` the client has finished with it and what
-arrives is text.
 
 ### Copying
 
@@ -149,16 +124,27 @@ there is something to scroll.
 
 ### What it deliberately does not do
 
-It does not take over how a chat line is built.
+It does not touch a chat message. At all.
 
-Numbered public channels keep Blizzard's own naming. Their bracket is assembled
-from the channel list at message time rather than read from a format string, so
-abbreviating them means replacing `ChatFrame_MessageEventHandler` and owning the
-formatting of every line in the game. That is how a chat addon ends up needing a
-fix on every patch, and one more abbreviation is not worth the outage.
+There is no message event filter, no wrapper on a chat frame's `AddMessage`, and
+the client's own chat handler is left exactly where it is. A line of chat arrives
+the same way it would with this addon uninstalled, and the performance case
+asserts that on every push rather than taking it on trust.
+
+That is a deliberate retreat rather than a design principle I started with.
+Making URLs clickable means altering the line, three ways of doing it were tried
+here, and every one of them was followed by chat failing inside Mythic+. Until
+that is understood, the safest chat addon is one that only draws.
+
+The one thing that does change what a line *says* is the channel abbreviation,
+and that is a format string the client reads, not a hook in its path — `[Guild]`
+becomes `[G]` because the word in the string changed. Numbered public channels
+keep Blizzard's own naming: their bracket is assembled per message rather than
+read from a string, and taking that over means owning the formatting of every
+line in the game.
 
 Class colouring, message routing and channel membership are all left to the
-client. Nothing here is rewritten except the URLs in it.
+client.
 
 ## Installation
 

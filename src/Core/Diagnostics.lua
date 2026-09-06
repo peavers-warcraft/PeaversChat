@@ -86,12 +86,6 @@ function Diagnostics:Start()
     lastSeen = nil
     startedAt = GetTime()
 
-    -- Ask the URL hook to count the lines that reach it. The gap between that
-    -- and the events counted here is the whole diagnosis: events with no passes
-    -- means the client stopped before AddMessage and nothing in this addon can
-    -- be responsible.
-    PC.Links.passes = 0
-    PC.Links.counting = true
 
     for i = 1, #WATCHED do
         pcall(watcher.RegisterEvent, watcher, WATCHED[i])
@@ -107,7 +101,6 @@ function Diagnostics:Stop()
         watcher:UnregisterAllEvents()
         watcher:Hide()
     end
-    PC.Links.counting = nil
     print("|cff3abdf7PeaversChat|r: stopped watching chat events.")
 end
 
@@ -138,7 +131,6 @@ function Diagnostics:Report()
     local elapsed = math.floor((GetTime() - (startedAt or GetTime())) + 0.5)
     print(("|cff3abdf7PeaversChat|r: %d seconds of chat events."):format(elapsed))
 
-    local ours = PC.Links:IsInstalled() and 1 or 0
     local seenAny = false
 
     for i = 1, #WATCHED do
@@ -146,10 +138,11 @@ function Diagnostics:Report()
         local count = counts[event]
         if count then
             seenAny = true
-            local filters = FilterCount(event)
-            local others = filters and math.max(0, filters - ours) or 0
-            print(("  %s: %d arrived, %d filter(s) installed (%d not ours)")
-                :format(event, count, filters or 0, others))
+            -- None of these filters are ours: this addon installs none. A
+            -- non-zero count is another addon, which is the single most useful
+            -- line in a chat bug report and otherwise impossible to find out.
+            print(("  %s: %d arrived, %d message filter(s) installed by other addons")
+                :format(event, count, FilterCount(event) or 0))
         end
     end
 
@@ -161,14 +154,6 @@ function Diagnostics:Report()
     if lastSeen then
         print(("  last: %s  %s"):format(lastSeen.event, Literal(lastSeen.text)))
     end
-
-    print(("  lines that reached our AddMessage hook: %d"):format(PC.Links.passes or 0))
-    print("  --")
-    print(("  chat handler replaced by this addon: %s"):format(
-        PC.Links:IsInstalled() and "YES" or "no - the client's own is untouched"))
-    print(("  PeaversChat URL hook: %s"):format(
-        PC.Links:IsInstalled() and "installed"
-        or (PC.Links:HasSurrendered() and "removed after repeated errors" or "not installed")))
 
     print("  A message counted above that you never saw on screen was delivered "
         .. "by the client and dropped after that.")

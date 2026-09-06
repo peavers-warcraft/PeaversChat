@@ -306,6 +306,7 @@ _G.ChatFrame_MessageEventHandler = function(frame, _, message)
     frame:AddMessage(message, 1, 1, 1)
     return false
 end
+local blizzardHandler = _G.ChatFrame_MessageEventHandler
 
 -- The buttons the addon hides.
 for _, name in ipairs({
@@ -411,9 +412,6 @@ PC.Config = {
     showBottomButton = true,
     showVoiceButtons = false,
     showCombatLogBar = false,
-    urlLinks = true,
-    urlColor = { r = 0.506, g = 0.549, b = 0.973 },
-    urlBrackets = true,
     copyButton = true,
     copyButtonVisibility = "dim",
     copyIconSize = 11,
@@ -433,7 +431,6 @@ Load("Core/Skin.lua")
 Load("Core/Tabs.lua")
 Load("Core/EditBox.lua")
 Load("Core/Buttons.lua")
-Load("Core/Links.lua")
 Load("Core/Copy.lua")
 Load("Core/Channels.lua")
 
@@ -451,7 +448,6 @@ PC.Skin:Initialize()
 PC.Tabs:Initialize()
 PC.EditBox:Initialize()
 PC.Buttons:Initialize()
-PC.Links:Initialize()
 PC.Copy:Initialize()
 
 PC.Frames:Initialize()
@@ -465,57 +461,13 @@ assert(dock.peaversStrip, "the tab strip background was never drawn on the dock"
 assert(chatTabs[1].peaversUnderline, "the tab was never restyled")
 assert(chatFrames[1].editBox.peaversBox, "the edit box was never skinned")
 assert(dock.peaversCopyButton, "the copy button was never built on the strip host")
-assert(PC.Links:IsInstalled(), "the URL rewrite was never switched on")
 assert(chatFrames[1].__pcAddMessage == nil,
-    "a Blizzard chat frame had its AddMessage replaced - that is the thing this must never do")
+    "a Blizzard chat frame had its AddMessage replaced - nothing here may touch the message path")
+assert(_G.ChatFrame_MessageEventHandler == blizzardHandler,
+    "the client's chat handler was replaced - nothing here may touch the message path")
 assert(_G.CHAT_GUILD_GET:find("%[G%]"), "channel names were not abbreviated")
 assert(_G.ChatFrameMenuButton:IsShown() == false, "the menu button is still on screen")
 assert(dock.peaversCopyButton:IsShown(), "the copy button is hidden")
-
---------------------------------------------------------------------------------
--- A chat message
---
--- The claim is that this costs the client nothing at all, so it is driven
--- through the hook the addon actually installed rather than a copy of it. Half
--- the sample contains a URL and half does not, which is roughly what chat looks
--- like and keeps the cheap early-bail from flattering the number.
---
--- Note where this now sits. The rewrite used to be a chat event filter and is
--- now a wrapper on the chat frame's own AddMessage, because the filter broke
--- chat outright in instanced content. The measured cost is the same work in a
--- different place; what changed is that it is no longer standing in the middle
--- of the client's event path.
---------------------------------------------------------------------------------
-
-local SAMPLE = {
-    "has anyone got a link for the weakaura",
-    "check https://wago.io/abcdef for the import string",
-    "pull in 3",
-    "the guide is at wowhead.com/guide/season-of-discovery, read it",
-    "ok.thanks that worked",
-    "nice one",
-    "www.warcraftlogs.com/reports/abc123 if you want the parse",
-    "brb 2 min",
-}
-
-local function DeliverMessage(i)
-    _G.ChatFrame_MessageEventHandler(chatFrames[1], "CHAT_MSG_CHANNEL",
-        SAMPLE[((i - 1) % #SAMPLE) + 1])
-end
-
-local MESSAGES_PER_SECOND = 10
-
-Stubs.ResetCounts()
-for i = 1, 400 do DeliverMessage(i) end
-local perMessage = Stubs.TotalCalls() / 400
-
--- The hook has to actually be doing the work, or the zero above is a zero
--- because nothing ran. The frame's own AddMessage records what reached it, so
--- this reads the hook's real output rather than a re-implementation of it.
-_G.ChatFrame_MessageEventHandler(chatFrames[1], "CHAT_MSG_SAY", "see www.example.com")
-assert(chatFrames[1]._lastLine, "nothing reached the frame at all")
-assert(chatFrames[1]._lastLine:find("|Hurl:", 1, true),
-    "the hook is installed but is not linking anything")
 
 --------------------------------------------------------------------------------
 -- Switching tabs
@@ -593,15 +545,6 @@ end
 local idleCalls, handlerCount = IdleCallsPerSecond()
 
 return {
-    {
-        name = "chat flowing, 10 messages/sec",
-        callsPerFrame = 0,
-        callsPerSecond = perMessage * MESSAGES_PER_SECOND,
-        idleCallsPerSecond = 0,
-        notes = string.format(
-            "%.2f client calls per message: most bail on a plain substring search before any of it, and the rewrite never touches a widget",
-            perMessage),
-    },
     {
         name = "switching tabs, 1/sec",
         callsPerFrame = 0,
