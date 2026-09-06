@@ -545,6 +545,25 @@ end
 FloodCombatLog(50)
 local perCombatLogLine, floodPaints = FloodCombatLog(3000)
 
+-- The client also calls FCFTab_UpdateColors from the dock's own update path,
+-- which an arriving message is enough to dirty. Same shape, same trap: repaint
+-- on every call and a busy instance walks every window hundreds of times a
+-- second to conclude nothing changed.
+local function FloodTabColours(calls)
+    paints = 0
+    for _ = 1, calls do
+        _G.FCFTab_UpdateColors(chatTabs[1], true)
+    end
+    return paints
+end
+
+FloodTabColours(50)
+local colourPaints = FloodTabColours(3000)
+
+assert(colourPaints == 0,
+    ("%d repaints for 3000 FCFTab_UpdateColors calls with no selection change")
+        :format(colourPaints))
+
 -- The guard, asserted rather than described. Three thousand lines into a
 -- flashing tab is one repaint; anything more means the hook has gone back to
 -- doing work per line, which is what tanked a Mythic+ pull.
@@ -622,8 +641,8 @@ return {
         callsPerSecond = perCombatLogLine * COMBAT_LOG_LINES_PER_SECOND,
         idleCallsPerSecond = 0,
         notes = string.format(
-            "%d repaint(s) for 3000 lines, %.4f client calls per line: after the first, every line has nothing to say",
-            floodPaints, perCombatLogLine),
+            "%d repaint(s) for 3000 combat log lines and %d for 3000 dock updates: after the first, there is nothing to say",
+            floodPaints, colourPaints),
     },
     {
         name = "told to re-apply, 1/sec",

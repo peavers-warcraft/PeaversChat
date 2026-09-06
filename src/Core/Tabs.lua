@@ -378,13 +378,34 @@ function Tabs:InstallHooks()
     if hooksInstalled then return end
     hooksInstalled = true
 
-    -- Selection changed: repaint. Each of these is guarded because chat is one
-    -- of the areas Blizzard reworks, and a missing global should cost the
-    -- repaint trigger rather than the addon.
+    -- Selection changed: repaint. Each is guarded because chat is one of the
+    -- areas Blizzard reworks, and a missing global should cost the repaint
+    -- trigger rather than the addon.
+    --
+    -- The important word is *changed*. FCFTab_UpdateColors is not a
+    -- selection-changed event - the client calls it from the dock's own update
+    -- path, which an arriving message is enough to dirty, so in a busy instance
+    -- it runs constantly. Repainting on every call meant walking every window,
+    -- resolving its tab and building a string to compare against the last one,
+    -- over and over, to conclude nothing had changed. That is the same mistake
+    -- as the alert-flash hook and it deserves the same answer: find out there is
+    -- nothing to do before doing anything.
+    --
+    -- One comparison. Everything else that can change a tab's appearance - a
+    -- rename, a flash starting or stopping, a settings change - has its own
+    -- trigger and does not come through here.
+    local lastSelected = nil
+
     for _, fname in ipairs({ "FCFTab_UpdateColors", "FCF_SelectDockFrame", "FCF_Tab_OnClick" }) do
         if type(_G[fname]) == "function" then
             hooksecurefunc(fname, function()
-                if PC.Config.enabled and PC.Config.styleTabs then Tabs:PaintAll() end
+                if not PC.Config.enabled or not PC.Config.styleTabs then return end
+
+                local selected = Frames:Selected()
+                if selected == lastSelected then return end
+
+                lastSelected = selected
+                Tabs:PaintAll()
             end)
         end
     end
