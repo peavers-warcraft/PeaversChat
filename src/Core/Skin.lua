@@ -159,8 +159,16 @@ end
 --- Colour and place a box. `pad` pushes it out beyond the frame's own rect, so
 --- the message text gets some air rather than sitting against the border.
 ---
---- `skipTop` drops the top edge, for when the tab strip is drawn above and the
---- two are meant to read as one box.
+--- `skipTop` says the tab strip is drawn above this and the two are meant to
+--- read as one box. It drops the top edge, and - the part that matters - stops
+--- the box growing upwards with the padding.
+---
+--- That upward growth is what put the background over the bottom half of the
+--- tabs: padding is room around the *text*, and above the text there is no text
+--- to give room to, there is a tab row. Everything above the frame's top edge
+--- belongs to the strip, which is drawn on the dock and therefore underneath
+--- the tabs. The box is drawn on the chat frame and is not, so it has no
+--- business up there at any padding.
 function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBorder, skipTop)
     local box = frame.peaversBox
     if not box then return end
@@ -168,8 +176,10 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
     local px = Hairline(frame)
     pad = pad or 0
 
+    local topPad = skipTop and 0 or pad
+
     box.bg:ClearAllPoints()
-    box.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad)
+    box.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, topPad)
     box.bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", pad, -pad)
     box.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
     box.bg:SetShown(showBg and true or false)
@@ -177,8 +187,8 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
     -- The four edges sit on the padded rect, not on the frame, so the border is
     -- the outline of what you can see rather than of where the text starts.
     box.top:ClearAllPoints()
-    box.top:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad)
-    box.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, pad)
+    box.top:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, topPad)
+    box.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, topPad)
     box.top:SetHeight(px)
 
     box.bottom:ClearAllPoints()
@@ -187,12 +197,12 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
     box.bottom:SetHeight(px)
 
     box.left:ClearAllPoints()
-    box.left:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad)
+    box.left:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, topPad)
     box.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -pad, -pad)
     box.left:SetWidth(px)
 
     box.right:ClearAllPoints()
-    box.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, pad)
+    box.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, topPad)
     box.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", pad, -pad)
     box.right:SetWidth(px)
 
@@ -352,25 +362,31 @@ function Skin:PaintStrip(host, frame, pad, height, bgColor, bgAlpha, borderColor
     local px = Hairline(frame)
     pad = pad or 0
 
+    -- Bottom flush with the frame's top edge, where the box now stops, so the
+    -- two meet exactly and neither reaches into the other's territory. The
+    -- padding is spent upwards, above the tab text, which is the only direction
+    -- there is room to spend it in.
+    local top = height + pad
+
     strip.bg:ClearAllPoints()
-    strip.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad + height)
-    strip.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad)
+    strip.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, top)
+    strip.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, 0)
     strip.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
     strip.bg:SetShown(showBg and true or false)
 
     strip.top:ClearAllPoints()
-    strip.top:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad + height)
-    strip.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, pad + height)
+    strip.top:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, top)
+    strip.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, top)
     strip.top:SetHeight(px)
 
     strip.left:ClearAllPoints()
-    strip.left:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, pad + height)
-    strip.left:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, pad)
+    strip.left:SetPoint("TOPLEFT", frame, "TOPLEFT", -pad, top)
+    strip.left:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, 0)
     strip.left:SetWidth(px)
 
     strip.right:ClearAllPoints()
-    strip.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, pad + height)
-    strip.right:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad)
+    strip.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", pad, top)
+    strip.right:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, 0)
     strip.right:SetWidth(px)
 
     for _, name in ipairs({ "top", "left", "right" }) do
