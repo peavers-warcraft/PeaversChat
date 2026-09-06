@@ -522,7 +522,7 @@ function ConfigUI:BuildLinksPage(parentFrame)
     local _, newY = W:CreateSectionHeader(parentFrame, "Links", indent, y)
     y = newY - 8
 
-    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, false)
+    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, true)
     y = afterLinks
 
     local _, afterBrackets = Toggle(parentFrame, "Put them in brackets", "urlBrackets", y, indent, width, true)
@@ -540,20 +540,16 @@ function ConfigUI:BuildLinksPage(parentFrame)
     urlPicker:SetPoint("TOPLEFT", indent, y)
     y = y - 40
 
-    local _, afterInstances = Toggle(parentFrame, "Also link them inside dungeons and raids",
-        "urlLinksInInstances", y, indent, width, false)
-    y = afterInstances - 4
-
     local linkNote = W:CreateLabel(parentFrame,
         "Clicking one opens the copy window with the address selected: an addon " ..
             "cannot open a browser, so click, Ctrl+C, Escape is as close as the " ..
             "game gets. This is the only part of the addon that alters a chat " ..
-            "message, and it ships switched off. Doing so has twice stopped " ..
-            "chat working inside a dungeon, and a hooked message method cannot " ..
-            "reliably be unhooked once another addon has hooked it too, so " ..
-            "switching this back off afterwards does not always undo it. " ..
-            "Everything else here only draws, and cannot affect a message at " ..
-            "all. Turn it on if you want links and can live with that.",
+            "message. It does so from beside the client's message path rather " ..
+            "than inside it: the game composes the line against a window of " ..
+            "ours and the finished text is handed to the real one, the same " ..
+            "way any addon prints to chat. Nothing on a Blizzard chat frame is " ..
+            "replaced, and turning this off calls the game's own handler with " ..
+            "the game's own window - absent rather than merely idle.",
         { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
     linkNote:SetPoint("TOPLEFT", indent, y)
     linkNote:SetWidth(width)

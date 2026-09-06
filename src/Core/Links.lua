@@ -196,127 +196,238 @@ function Links:Resume()
     failures, surrendered = 0, false
     self:Sync()
 end
-
 --------------------------------------------------------------------------------
 -- Where the rewrite happens
 --
--- On the way to the screen, not on the way in.
+-- Beside the client's message path, not inside it.
 --
--- This used to be a ChatFrame_AddMessageEventFilter on every chat event, which
--- is the documented way to alter a chat message and is what most addons reach
--- for. In instanced content it stopped chat working: authored messages never
--- appeared while system messages, which take a different path, arrived
--- normally. Removing the filters fixed it, with the client happily delivering
--- 36 party messages over a key that showed none of them.
+-- Making a URL clickable means altering the chat line, and there are only three
+-- places to do that. Two have been tried here and both stopped chat working in
+-- instanced content: a ChatFrame_AddMessageEventFilter, and a wrapper on the
+-- chat frame's own AddMessage. The second was worse, because a wrapped method
+-- cannot be reliably unwrapped once another addon has hooked it too - so
+-- turning the feature off did not undo it.
 --
--- The event path is where the client is doing its restricted-data handling, and
--- an addon standing in the middle of it is standing somewhere it now has no
--- business being. Prat - which has done clickable URLs for fifteen years and
--- does not have this problem - does not call ChatFrame_AddMessageEventFilter
--- once in its entire source. It works on the line after the client has finished
--- building it, and so does this now.
+-- The third is the one Prat has used for fifteen years without this problem:
 --
--- So the hook is on each chat frame's own AddMessage. By then the message is a
--- finished string: the name is coloured, the channel is bracketed, every
--- restricted value has already been resolved by code allowed to resolve it, and
--- what arrives here is text. Anything containing a pipe is skipped, which is
--- every link the client just built, so none of that work can be damaged.
+--   * We own a ScrollingMessageFrame of our own.
+--   * We replace the global ChatFrame_MessageEventHandler, and when a message
+--     arrives we call the client's original handler with our frame standing in
+--     for the real one.
+--   * Blizzard composes the line exactly as it always does and calls AddMessage
+--     on our frame, which is ours to intercept because we made it.
+--   * We rewrite the text and call the real frame's AddMessage ourselves.
 --
--- Uninstalling restores the original method only when nothing has hooked on top
--- of ours. If something has, unwinding would throw away their hook with ours,
--- so the wrapper is left in place as a pass-through instead. That is the one
--- place in this addon where "off" does not mean "gone", and it is because the
--- alternative is breaking somebody else's addon.
+-- No method on a Blizzard chat frame is ever replaced. The real frame is called
+-- the way print() calls it - insecure addon code handing a string to a widget
+-- method - which is a path that demonstrably works everywhere, including the
+-- keys where the other two approaches did not.
+--
+-- The other property that matters is what "off" means. When the feature is off
+-- this calls the client's original handler with the client's own frame and
+-- returns its result, so the addon is not merely inert, it is absent. The
+-- AddMessage wrapper could never promise that, and it is why this can be
+-- trusted where that one could not.
+--
+-- Standing in for another frame has one visible cost, paid below: the client
+-- decides whether to flash an unread tab by asking the frame it was given
+-- whether it is shown, and the frame it was given is ours. See FlashIfUnread.
 --------------------------------------------------------------------------------
 
 local active = false
+local installed = false
+local originalHandler = nil
 
-local function HookFrame(frame)
-    if frame.__pcAddMessage then return end
-    if type(frame.AddMessage) ~= "function" then return end
+local proxy = nil
+local captured = {}
 
-    local original = frame.AddMessage
-    frame.__pcAddMessage = original
+-- Fields that must not be copied onto the proxy: the C-backed internals of a
+-- ScrollingMessageFrame - its font string pool, its layout bookkeeping - which
+-- corrupt the frame receiving them. The list is Prat's, which is where this was
+-- found out the hard way.
+local PROXY_FIELD_BLACKLIST = {
+    fontStringPool = true,
+    highlightTexturePool = true,
+    visibleLines = true,
+    isLayoutDirty = true,
+    isDisplayDirty = true,
+    scrollOffset = true,
+    onDisplayRefreshedCallback = true,
+    onScrollChangedCallback = true,
+    onTextCopiedCallback = true,
+    historyBuffer = true,
+    messageInfoBuffer = true,
+}
 
-    local wrapper = function(self, text, ...)
-        -- Counted for /pchat trace, which needs to know whether a line reached
-        -- this hook at all: an event that arrives and never gets here means the
-        -- client stopped before AddMessage, and nothing in this file can be to
-        -- blame for it. One integer, and only while tracing.
-        if Links.counting then Links.passes = (Links.passes or 0) + 1 end
+local function EnsureProxy()
+    if proxy then return proxy end
 
-        if active and type(text) == "string" then
-            local ok, rewritten = pcall(Rewrite, text)
-            if not ok then
-                NoteFailure(rewritten)
-            elseif rewritten then
-                text = rewritten
-            end
+    proxy = CreateFrame("ScrollingMessageFrame")
+    if _G.Mixin and _G.ChatFrameMixin then
+        pcall(_G.Mixin, proxy, _G.ChatFrameMixin)
+    end
+    proxy:Hide()
+
+    -- Our frame, so this is ours to replace. Every line the client composes
+    -- lands here instead of on screen.
+    proxy.AddMessage = function(_, text, ...)
+        captured[#captured + 1] = { text = text, count = select("#", ...), ... }
+    end
+
+    -- Always "shown", which suppresses the client's own unread-tab flash: it
+    -- would otherwise flash this frame, which has no tab. FlashIfUnread puts it
+    -- back for the real one.
+    proxy.IsShown = function() return true end
+
+    return proxy
+end
+
+--------------------------------------------------------------------------------
+-- Standing in for a chat frame
+--------------------------------------------------------------------------------
+
+local mirrored = {}
+
+--- Copy the real frame's own state onto the proxy, so the client's handler -
+--- which reads things like messageTypeList and defaultLanguage off the frame it
+--- is given - makes the same decisions it would have made for the real one.
+local function Mirror(frame)
+    for key in pairs(mirrored) do mirrored[key] = nil end
+
+    for key, value in pairs(frame) do
+        if type(value) ~= "function" and not PROXY_FIELD_BLACKLIST[key] then
+            mirrored[key] = { had = proxy[key] ~= nil, value = proxy[key] }
+            proxy[key] = value
         end
-        return original(self, text, ...)
     end
-
-    frame.AddMessage = wrapper
-    frame.__pcWrapper = wrapper
 end
 
---- Take the wrapper back off - as far as that is possible, which is not as far
---- as it should be, and is the reason clickable URLs now ship switched off.
----
---- If nothing has hooked AddMessage since we did, this restores the client's
---- own method and we are cleanly gone. If something has, we cannot leave: their
---- wrapper captured ours as its upvalue, so putting the original back would
---- both discard their hook and still leave ours being called through theirs.
---- Once a method has been wrapped there is no reliable way out of the chain.
----
---- That is a hard limit on the whole technique, not a bug to be fixed here. It
---- is why "turn it off" cannot be relied on to undo this, and why the honest
---- answer is not to install it in the first place unless somebody asks for it.
-local function UnhookFrame(frame)
-    local original = frame.__pcAddMessage
-    if not original then return end
-
-    if frame.AddMessage == frame.__pcWrapper then
-        frame.AddMessage = original
-        frame.__pcAddMessage = nil
-        frame.__pcWrapper = nil
+local function Unmirror()
+    for key, saved in pairs(mirrored) do
+        if saved.had then proxy[key] = saved.value else proxy[key] = nil end
     end
+    for key in pairs(mirrored) do mirrored[key] = nil end
+end
+
+--- The unread flash, put back. The client skipped its own because our stand-in
+--- claims to be on screen, and a window that is genuinely not on screen still
+--- wants its tab to say something arrived.
+---
+--- Deliberately simpler than the client's rule, which also weighs the message
+--- type and the player's alert settings. Erring towards flashing is the right
+--- way to be wrong about an unread indicator.
+local function FlashIfUnread(frame)
+    if frame:IsShown() then return end
+    if type(_G.FCF_StartAlertFlash) ~= "function" then return end
+    pcall(_G.FCF_StartAlertFlash, frame)
 end
 
 --------------------------------------------------------------------------------
--- Clicking one
+-- The interception
 --------------------------------------------------------------------------------
 
-local function OnHyperlinkEnter(self, link)
-    if type(link) ~= "string" then return end
-    local url = match(link, "^url:(.+)$")
-    if not url then return end
+--- Run the client's own handler against the proxy, rewrite what it produced,
+--- deliver it to the real frame.
+---
+--- Ordering is load-bearing: nothing is delivered until every line has been
+--- captured and rewritten, so a failure anywhere before delivery leaves the
+--- event wholly undelivered and the caller can hand it back to the client
+--- safely. There is no half-delivered state to double up.
+local function Intercept(frame, event, ...)
+    EnsureProxy()
 
-    local tooltip = _G.GameTooltip
-    if not tooltip then return end
+    for index = #captured, 1, -1 do captured[index] = nil end
 
-    tooltip:SetOwner(self, "ANCHOR_CURSOR")
-    tooltip:ClearLines()
-    tooltip:AddLine(url, 1, 1, 1, true)
-    tooltip:AddLine("Click to copy", 0.58, 0.58, 0.58)
-    tooltip:Show()
+    Mirror(frame)
+    local ok, blocked = pcall(originalHandler, proxy, event, ...)
+    Unmirror()
+
+    if not ok then
+        -- The client's handler threw while writing to our stand-in. Nothing was
+        -- delivered, so let the caller run it again properly.
+        error(blocked, 0)
+    end
+
+    if #captured == 0 then
+        -- Filtered, or not destined for this window. Either way the client has
+        -- said what it wanted to happen.
+        return blocked
+    end
+
+    for index = 1, #captured do
+        local line = captured[index]
+        if type(line.text) == "string" then
+            local rewritten = Rewrite(line.text)
+            if rewritten then line.text = rewritten end
+        end
+    end
+
+    for index = 1, #captured do
+        local line = captured[index]
+        frame:AddMessage(line.text, unpack(line, 1, line.count))
+    end
+
+    FlashIfUnread(frame)
+
+    return blocked
 end
 
-local function OnHyperlinkLeave(_, link)
-    if type(link) == "string" and match(link, "^url:") and _G.GameTooltip then
-        _G.GameTooltip:Hide()
+--- Every chat message in the game passes through here, so the failure path
+--- matters more than the happy one. Anything going wrong hands the event
+--- straight back to the client's own handler, with the client's own frame, and
+--- the player sees the message they were always going to see.
+local function Dispatch(frame, event, ...)
+    if not active then
+        return originalHandler(frame, event, ...)
+    end
+
+    if Links.counting then Links.passes = (Links.passes or 0) + 1 end
+
+    local ok, result = pcall(Intercept, frame, event, ...)
+    if ok then return result end
+
+    NoteFailure(result)
+    return originalHandler(frame, event, ...)
+end
+
+--------------------------------------------------------------------------------
+-- Registration
+--
+-- Installed once and never removed. Removing a hook from a chain is the trap
+-- that made the last approach untrustworthy: another addon hooking after us
+-- captures ours, and then neither of us can get out cleanly. So this goes in
+-- once and answers the question honestly instead - with the feature off,
+-- Dispatch calls the client's original handler with the client's own frame and
+-- returns its result, which is not "inert", it is indistinguishable from never
+-- having been here.
+--------------------------------------------------------------------------------
+
+function Links:IsInstalled()
+    return active
+end
+
+local function Install()
+    if installed then return end
+    if type(_G.ChatFrame_MessageEventHandler) ~= "function" then return end
+
+    installed = true
+    originalHandler = _G.ChatFrame_MessageEventHandler
+    _G.ChatFrame_MessageEventHandler = function(frame, event, ...)
+        return Dispatch(frame, event, ...)
     end
 end
 
+--- Match behaviour to the settings. Idempotent, and cheap: the hook is already
+--- where it needs to be, so this only ever moves a boolean.
+function Links:Sync()
+    active = (PC.Config.enabled and PC.Config.urlLinks and not surrendered) and true or false
+    if active then Install() end
+end
+
+--- Per-window work, and note what is not here any more: nothing that touches a
+--- message. The rewrite is installed once, globally, and a window being adopted
+--- has no bearing on it. Only the hover tooltip for a link is per-frame.
 local function Apply(frame)
-    -- Sync, not a bare hook. This runs whenever a window is adopted, and
-    -- adoption happens on PLAYER_ENTERING_WORLD - the same event that carries
-    -- you into the dungeon where the hook must not be installed. Deciding here
-    -- with a copy of the conditions is how the instance guard got undone
-    -- milliseconds after it was applied: Sync took the hook out on zone-in and
-    -- the refresh that followed put it straight back. There is one answer to
-    -- "should this be hooked", and it lives in Sync.
-    Links:Sync()
 
     if frame.__pcHyperlinkHooked then return end
     if type(frame.HookScript) ~= "function" then return end
@@ -330,75 +441,11 @@ end
 -- Initialisation
 --------------------------------------------------------------------------------
 
---------------------------------------------------------------------------------
--- Registration
---
--- Turning the feature off has to mean the hook stops acting, not that it acts
--- and hopes. "Off" that leaves a live hook cannot answer the only question
--- anybody asks it - is this addon what is wrong with my chat - so `active`
--- gates the rewrite and Unwrap removes the wrapper outright wherever it safely
--- can.
---------------------------------------------------------------------------------
-
-function Links:IsInstalled()
-    return active
-end
-
---- Match the hooks to the current settings. Idempotent; called on every config
---- change and every time a chat window is adopted.
---------------------------------------------------------------------------------
--- Instanced content
---
--- Twice now, altering chat messages has stopped chat working inside a dungeon
--- while leaving it fine everywhere else - first from a message event filter,
--- then from this AddMessage hook, which is a different insertion point in the
--- same path. Two different mechanisms failing the same way in the same place is
--- not a bug in either of them. It says an addon has no business in the message
--- path there at all, whatever door it came in by.
---
--- So the hook comes out on the way into a dungeon, raid, arena or battleground
--- and goes back in on the way out. URLs stay clickable everywhere they have
--- ever worked; the place they did not is the place chat now goes untouched.
---
--- The setting exists because this is a workaround for behaviour nobody has
--- explained yet. If a future patch makes it safe, it is one checkbox rather
--- than a new build.
---------------------------------------------------------------------------------
-
-local function InRestrictedInstance()
-    if type(_G.IsInInstance) ~= "function" then return false end
-
-    local ok, inInstance, kind = pcall(_G.IsInInstance)
-    if not ok or not inInstance then return false end
-
-    return kind == "party" or kind == "raid" or kind == "arena" or kind == "pvp"
-end
-
-Links.InRestrictedInstance = InRestrictedInstance
-
-function Links:Sync()
-    local allowedHere = PC.Config.urlLinksInInstances or not InRestrictedInstance()
-
-    active = (PC.Config.enabled and PC.Config.urlLinks and allowedHere and not surrendered)
-        and true or false
-
-    Frames:Each(function(frame)
-        if active then HookFrame(frame) else UnhookFrame(frame) end
-    end)
-end
-
 function Links:Initialize()
     Frames:RegisterHandler("links", Apply)
 
     -- After the handler, so Sync sees the windows it has just been given.
     self:Refresh()
-
-    -- The hook has to come out before the first message arrives in a dungeon
-    -- and go back in on the way out, so both ends of the zone change matter.
-    local Events = _G.PeaversCommons.Events
-    for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }) do
-        Events:RegisterEvent(event, function() Links:Sync() end)
-    end
 
     -- Clicking the link. The client routes every hyperlink in a chat frame
     -- through SetItemRef, including types it has never heard of, which is what

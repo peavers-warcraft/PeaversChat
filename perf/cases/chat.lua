@@ -220,8 +220,10 @@ local function NewChatFrame(index, windowName)
 
     -- Uncounted on purpose. The client calls AddMessage with or without this
     -- addon, so charging the addon for it would flatter nothing and mislead
-    -- everything: what we want is the cost the hook *adds*.
+    -- everything: what we want is the cost the rewrite *adds*.
     frame.AddMessage = function(self, text) self._lastLine = text end
+    frame.messageTypeList = { "SAY" }
+    frame.defaultLanguage = "Common"
 
     frame.GetNumMessages = function() return #MESSAGES end
     frame.GetMessageInfo = function(_, i) return MESSAGES[((i - 1) % #MESSAGES) + 1] end
@@ -297,6 +299,13 @@ _G.FCF_DockFrame = function() end
 _G.ChatEdit_UpdateHeader = function() end
 _G.ChatEdit_ActivateChat = function() end
 _G.SetItemRef = function() end
+
+-- The client's own message handler, which the addon now stands beside rather
+-- than inside: it composes a line and writes it to whichever frame it is given.
+_G.ChatFrame_MessageEventHandler = function(frame, _, message)
+    frame:AddMessage(message, 1, 1, 1)
+    return false
+end
 
 -- The buttons the addon hides.
 for _, name in ipairs({
@@ -405,7 +414,6 @@ PC.Config = {
     urlLinks = true,
     urlColor = { r = 0.506, g = 0.549, b = 0.973 },
     urlBrackets = true,
-    urlLinksInInstances = true,
     copyButton = true,
     copyButtonVisibility = "dim",
     copyIconSize = 11,
@@ -457,7 +465,9 @@ assert(dock.peaversStrip, "the tab strip background was never drawn on the dock"
 assert(chatTabs[1].peaversUnderline, "the tab was never restyled")
 assert(chatFrames[1].editBox.peaversBox, "the edit box was never skinned")
 assert(dock.peaversCopyButton, "the copy button was never built on the strip host")
-assert(chatFrames[1].__pcAddMessage, "the URL hook was never installed on ChatFrame1")
+assert(PC.Links:IsInstalled(), "the URL rewrite was never switched on")
+assert(chatFrames[1].__pcAddMessage == nil,
+    "a Blizzard chat frame had its AddMessage replaced - that is the thing this must never do")
 assert(_G.CHAT_GUILD_GET:find("%[G%]"), "channel names were not abbreviated")
 assert(_G.ChatFrameMenuButton:IsShown() == false, "the menu button is still on screen")
 assert(dock.peaversCopyButton:IsShown(), "the copy button is hidden")
@@ -489,7 +499,8 @@ local SAMPLE = {
 }
 
 local function DeliverMessage(i)
-    chatFrames[1]:AddMessage(SAMPLE[((i - 1) % #SAMPLE) + 1])
+    _G.ChatFrame_MessageEventHandler(chatFrames[1], "CHAT_MSG_CHANNEL",
+        SAMPLE[((i - 1) % #SAMPLE) + 1])
 end
 
 local MESSAGES_PER_SECOND = 10
@@ -501,7 +512,7 @@ local perMessage = Stubs.TotalCalls() / 400
 -- The hook has to actually be doing the work, or the zero above is a zero
 -- because nothing ran. The frame's own AddMessage records what reached it, so
 -- this reads the hook's real output rather than a re-implementation of it.
-chatFrames[1]:AddMessage("see www.example.com")
+_G.ChatFrame_MessageEventHandler(chatFrames[1], "CHAT_MSG_SAY", "see www.example.com")
 assert(chatFrames[1]._lastLine, "nothing reached the frame at all")
 assert(chatFrames[1]._lastLine:find("|Hurl:", 1, true),
     "the hook is installed but is not linking anything")
@@ -566,7 +577,7 @@ return {
         callsPerSecond = perMessage * MESSAGES_PER_SECOND,
         idleCallsPerSecond = 0,
         notes = string.format(
-            "%.2f client calls per message: the URL matcher is pure string work in an AddMessage hook, and never touches a widget",
+            "%.2f client calls per message: the client composes against our stand-in frame and the rewrite is pure string work, never a widget call",
             perMessage),
     },
     {

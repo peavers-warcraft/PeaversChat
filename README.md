@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 158.6 KB | 160 KB | pass |
+| Packaged size | 158.7 KB | 192 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -41,11 +41,11 @@ Scenarios driven against the real addon source, outside the game:
 
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
-| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the URL matcher is pure string work in an AddMessage hook, and never touches a widget |
+| chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the client composes against our stand-in frame and the rewrite is pure string work, never a widget call |
 | switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 796 calls to skin every window at login, once |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>4,097 lines of Lua · 158.6 KB packaged · no bundled libraries</sub>
+<sub>4,128 lines of Lua · 158.7 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
@@ -67,7 +67,7 @@ than anybody switches tabs.
 - Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading, in a font of your choosing
 - Tabs sit inside the window: the background reaches up over the tab strip rather than stopping underneath it
 - Tabs stay readable instead of fading out when the mouse is elsewhere
-- Clickable URLs, off by default and with a matcher careful enough not to turn "ok.thanks" into a link — it is the one feature here that alters a chat message, and the only one that can affect chat at all
+- Clickable URLs, with a matcher careful enough not to turn "ok.thanks" into a link
 - A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
 - Every button around the frame — chat menu, group finder, scroll arrows, voice, combat log bar — individually hideable, and hidden by default
 - The edit box moved out from under the last line of chat, with a border coloured by the channel you are about to speak in

@@ -163,9 +163,6 @@ function Diagnostics:Report()
     end
 
     print(("  lines that reached our AddMessage hook: %d"):format(PC.Links.passes or 0))
-    print(("  in a restricted instance right now: %s"):format(
-        PC.Links.InRestrictedInstance and tostring(PC.Links.InRestrictedInstance()) or "unknown"))
-
     print(("  PeaversChat URL hook: %s"):format(
         PC.Links:IsInstalled() and "installed"
         or (PC.Links:HasSurrendered() and "removed after repeated errors" or "not installed")))

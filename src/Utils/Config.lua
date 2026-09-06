@@ -131,24 +131,15 @@ local PC_DEFAULTS = {
     ----------------------------------------------------------------------------
     -- Links
     ----------------------------------------------------------------------------
-    -- Off by default, which it did not used to be.
-    --
-    -- Making a URL clickable means altering the chat line, and every way of
-    -- doing that puts this addon inside the client's message path. Twice that
-    -- stopped chat working inside a dungeon; worse, a wrapped method cannot be
-    -- reliably unwrapped once another addon has hooked it too, so switching the
-    -- feature off afterwards does not always undo it. A feature that can break
-    -- chat and then refuse to let go is not a feature that should be on by
-    -- default. Everything else here is drawing, and cannot.
-    urlLinks = false,
+    -- On again. The rewrite no longer sits inside the client's message path:
+    -- the client composes the line against a frame of ours and we hand the
+    -- finished text to the real window, the same way print() does. Nothing on a
+    -- Blizzard chat frame is replaced, and switching this off calls the
+    -- client's own handler with the client's own frame - absent, not inert.
+    urlLinks = true,
     urlColor = { r = 0.506, g = 0.549, b = 0.973 },
     urlBrackets = true,
 
-    -- Off, and a workaround rather than a preference. Altering chat messages
-    -- inside a dungeon has twice stopped chat working there, from two different
-    -- insertion points, while being fine everywhere else. Until that is
-    -- explained, the message path in instanced content is left alone.
-    urlLinksInInstances = false,
 
     ----------------------------------------------------------------------------
     -- Copy
