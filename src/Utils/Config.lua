@@ -159,6 +159,9 @@ local PC_DEFAULTS = {
     -- Where /pchat minimal keeps what it turned off, so it can put it back.
     minimalBackup = {},
 
+    -- Where /pchat without keeps what it removed, so it can be put back.
+    withoutBackup = {},
+
     debugMode = false,
     DEBUG_ENABLED = false,
 }

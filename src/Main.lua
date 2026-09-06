@@ -70,6 +70,15 @@ local TRY_GROUPS = {
 
 local TRY_ORDER = { "tabs", "buttons", "copy", "editbox", "channels", "buffer" }
 
+--- Re-apply everything after a settings change. The bisect commands all end
+--- here, so they cannot drift apart over which modules need telling.
+local function Refresh()
+    PC.Channels:Apply()
+    PC.Buttons:Refresh()
+    PC.Frames:Refresh()
+    PC.Tabs:PaintAll()
+end
+
 -- Register slash commands
 PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     default = function()
@@ -96,6 +105,55 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     end,
     copy = function()
         PC.Copy:ShowChat()
+    end,
+    without = function(rest)
+        -- Bisecting from the other end: everything on, then one group taken
+        -- away at a time, cumulatively. Removals stack, so "without buttons"
+        -- then "without tabs" leaves both off and everything else on.
+        local cfg = PC.Config
+        local group = tostring(rest or ""):lower():gsub("%s", "")
+
+        -- Starting from full: if minimal mode is on, come out of it first.
+        local minimalHeld = cfg.minimalBackup or {}
+        if next(minimalHeld) ~= nil then
+            for key, value in pairs(minimalHeld) do cfg[key] = value end
+            cfg.minimalBackup = {}
+        end
+
+        local removed = cfg.withoutBackup or {}
+
+        if group == "none" then
+            for key, value in pairs(removed) do cfg[key] = value end
+            cfg.withoutBackup = {}
+            cfg:Save()
+            Refresh()
+            Utils.Print(PC, "Everything back on.")
+            return
+        end
+
+        if group == "" or not TRY_GROUPS[group] then
+            Utils.Print(PC, "Take one group away at a time, then test:")
+            for _, name in ipairs(TRY_ORDER) do
+                local gone = false
+                for _, key in ipairs(TRY_GROUPS[name]) do
+                    if removed[key] ~= nil then gone = true end
+                end
+                print(("  /pchat without %-9s %s"):format(name, gone and "- already removed" or ""))
+            end
+            print("  /pchat without none      - put everything back")
+            return
+        end
+
+        for _, key in ipairs(TRY_GROUPS[group]) do
+            if removed[key] == nil then removed[key] = cfg[key] end
+            cfg[key] = MINIMAL[key]
+        end
+        cfg.withoutBackup = removed
+        cfg:Save()
+        Refresh()
+
+        Utils.Print(PC, group .. " removed. Reload, then test. If chat still goes, "
+            .. "/pchat without the next one - they stack.")
     end,
     try = function(rest)
         local cfg = PC.Config
@@ -278,7 +336,8 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
         print("  /pchat minimal - Toggle down to just a background and a font")
-        print("  /pchat try <group> - Hand one group back while minimal, to find a culprit")
+        print("  /pchat without <group> - Take one group away, cumulatively, to find a culprit")
+        print("  /pchat try <group> - Hand one group back while minimal")
         print("  /pchat safe - Toggle the channel abbreviations off")
         print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat trace - Count chat events as they arrive, then report")
