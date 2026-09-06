@@ -249,7 +249,7 @@ function ConfigUI:BuildAppearancePage(parentFrame)
             if not PC.Position:CaptureCurrent() then return end
             PC.Config.positionEnabled = true
             Apply()
-            PC.Position:Apply()
+            PC.Position:Reapply()
             DescribePosition()
         end,
     })

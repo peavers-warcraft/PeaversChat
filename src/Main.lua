@@ -130,7 +130,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
             end
             cfg.positionEnabled = true
             cfg:Save()
-            PC.Position:Apply()
+            PC.Position:Reapply()
             Utils.Print(PC, string.format(
                 "Chat pinned at %s %d, %d (%dx%d). /pchat move off releases it.",
                 cfg.chatPoint, cfg.chatX, cfg.chatY, cfg.chatWidth, cfg.chatHeight))
