@@ -264,48 +264,151 @@ end
 --------------------------------------------------------------------------------
 -- The button on each chat frame
 --
--- Anchored above the frame's top-right corner, which is the tab strip: the one
--- band of empty space around a chat window that never has text in it.
+-- A 14px copy mark in the top-right corner of the chat text, costing no layout
+-- at all: it sits over the message area rather than beside it, in the corner
+-- that holds the oldest visible line and is almost always empty.
+--
+-- The mark is drawn rather than shipped - two offset squares, each an outer
+-- rectangle in the icon colour with an inner one punched out in the window's
+-- own background. That is what reads as an outline at this size, where the
+-- rounded border art the rest of the suite uses reads as a blob, and it means
+-- no new file in the package and a glyph that recolours with the theme.
+--
+-- On visibility there is a real tension. An icon that appears only on hover is
+-- a click target nobody can see, which is the one interface rule this suite
+-- holds to. So the default is neither: the mark sits at a quarter opacity, out
+-- of the way but plainly there, and comes up to full when the pointer is over
+-- the window. "Only on hover" is available for anybody who wants it, and is
+-- the one setting here that does hide a control.
+--
+-- Hover is read from the chat frame's own OnEnter, and re-asserted from the
+-- button's, because moving the pointer onto a child fires the parent's OnLeave.
 --------------------------------------------------------------------------------
+
+local ICON_SIZE = 14
+
+local function CopyGlyph(button)
+    local square = 9
+    local parts = {}
+
+    for index = 1, 2 do
+        -- The front square draws in OVERLAY so it covers the back one where
+        -- they overlap; the punched-out inner sits a sublevel above its own
+        -- outer.
+        local layer = (index == 1) and "ARTWORK" or "OVERLAY"
+        local outer = button:CreateTexture(nil, layer, nil, 0)
+        local inner = button:CreateTexture(nil, layer, nil, 1)
+
+        outer:SetSize(square, square)
+        inner:SetSize(square - 2, square - 2)
+
+        if index == 1 then
+            outer:SetPoint("BOTTOMLEFT")
+        else
+            outer:SetPoint("TOPRIGHT")
+        end
+        inner:SetPoint("CENTER", outer, "CENTER")
+
+        parts[#parts + 1] = { outer = outer, inner = inner }
+    end
+
+    return parts
+end
+
+local function PaintGlyph(button, bright)
+    local C = Theme.Colors
+    local cfg = PC.Config
+    local ink = bright and C.text or C.textSec
+    local bg = cfg.bgColor or { r = 0.086, g = 0.086, b = 0.086 }
+
+    for _, part in ipairs(button.glyph) do
+        part.outer:SetColorTexture(ink[1], ink[2], ink[3], 1)
+        part.inner:SetColorTexture(bg.r, bg.g, bg.b, 1)
+    end
+end
+
+--- Alpha for the current setting and hover state. Kept in one place because
+--- three scripts and a settings change all need to agree on it.
+local function ApplyVisibility(frame)
+    local button = frame.peaversCopyButton
+    if not button then return end
+
+    local cfg = PC.Config
+    local shown = cfg.enabled and cfg.copyButton
+    button:SetShown(shown and true or false)
+    if not shown then return end
+
+    local hovered = frame.__pcHovered and true or false
+    local mode = cfg.copyButtonVisibility or "dim"
+
+    if mode == "always" then
+        button:SetAlpha(hovered and 1 or 0.85)
+    elseif mode == "hover" then
+        button:SetAlpha(hovered and 1 or 0)
+    else
+        button:SetAlpha(hovered and 1 or 0.25)
+    end
+
+    PaintGlyph(button, hovered)
+end
+
+local function SetHovered(frame, hovered)
+    frame.__pcHovered = hovered or nil
+    ApplyVisibility(frame)
+end
+
+local function HookHover(frame)
+    if frame.__pcHoverHooked then return end
+    if type(frame.HookScript) ~= "function" then return end
+
+    frame.__pcHoverHooked = true
+    frame:HookScript("OnEnter", function(self) SetHovered(self, true) end)
+    frame:HookScript("OnLeave", function(self) SetHovered(self, false) end)
+end
+
+local function BuildButton(frame)
+    local button = CreateFrame("Button", nil, frame)
+    button:SetSize(ICON_SIZE, ICON_SIZE)
+    button.glyph = CopyGlyph(button)
+
+    button:SetScript("OnClick", function() Copy:ShowChat(frame) end)
+
+    -- The mark carries no label, so it has to say what it is on hover.
+    button:SetScript("OnEnter", function(self)
+        SetHovered(frame, true)
+        local tooltip = _G.GameTooltip
+        if not tooltip then return end
+        tooltip:SetOwner(self, "ANCHOR_LEFT")
+        tooltip:ClearLines()
+        tooltip:AddLine("Copy this chat window")
+        tooltip:AddLine("Everything in the buffer, ready for Ctrl+C.", 0.58, 0.58, 0.58, true)
+        tooltip:Show()
+    end)
+
+    button:SetScript("OnLeave", function()
+        SetHovered(frame, false)
+        if _G.GameTooltip then _G.GameTooltip:Hide() end
+    end)
+
+    frame.peaversCopyButton = button
+    return button
+end
 
 local function Apply(frame)
     local cfg = PC.Config
 
     if not frame.peaversCopyButton then
         if not cfg.enabled or not cfg.copyButton then return end
-
-        local button = FlatButton(frame, "COPY", 48, function()
-            Copy:ShowChat(frame)
-        end)
-        button:SetHeight(18)
-        button.chatFrame = frame
-        frame.peaversCopyButton = button
+        BuildButton(frame)
     end
 
-    -- Inside the tab strip when there is one, which is where the window's
-    -- background now reaches; above the frame when there is not, because the
-    -- alternative is sitting on top of the first line of chat.
-    local host = PC.Skin.StripHost(frame)
-    local strip = host and PC.Skin.StripHeight(frame) or 0
-    local pad = cfg.padding or 0
+    HookHover(frame)
 
     local button = frame.peaversCopyButton
     button:ClearAllPoints()
-    if strip > 0 then
-        button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, strip - 3)
+    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
 
-        -- The strip's background is a texture on the dock, and this button is a
-        -- child of the chat frame, so nothing about the parentage says which
-        -- draws on top. Said explicitly here, in the dock's own strata, because
-        -- assuming it is what made the tabs disappear once already.
-        if host.GetFrameStrata then
-            button:SetFrameStrata(host:GetFrameStrata())
-            button:SetFrameLevel((host:GetFrameLevel() or 1) + 5)
-        end
-    else
-        button:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad + 3)
-    end
-    button:SetShown(cfg.enabled and cfg.copyButton and true or false)
+    ApplyVisibility(frame)
 end
 
 local function Restore(frame)

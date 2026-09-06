@@ -69,6 +69,11 @@ local PC_DEFAULTS = {
     styleTabs = true,
     tabFontSize = 12,
 
+    -- Empty means "whatever font the tab already had", which is Blizzard's and
+    -- is correct in every locale. A chosen font is only applied when the client
+    -- can render the locale with it.
+    tabFont = "",
+
     -- The window's background reaches up over the tab strip, so the tabs sit
     -- inside the box rather than balanced on top of it. 0 measures how far the
     -- tabs actually reach; anything else overrides that measurement.
@@ -122,6 +127,11 @@ local PC_DEFAULTS = {
     ----------------------------------------------------------------------------
     copyButton = true,
     copyStripColors = true,
+
+    -- "dim" keeps the mark faintly visible at all times, which is the rule this
+    -- suite holds to: no click target you cannot see. "hover" is the exception,
+    -- for anybody who would rather have nothing there at all.
+    copyButtonVisibility = "dim",   -- "dim" | "always" | "hover"
 
     ----------------------------------------------------------------------------
     -- Channels

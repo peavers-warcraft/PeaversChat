@@ -32,6 +32,8 @@ local addonName, PC = ...
 local Tabs = {}
 PC.Tabs = Tabs
 
+local PeaversCommons = _G.PeaversCommons
+
 local Frames = PC.Frames
 local Skin = PC.Skin
 
@@ -129,7 +131,23 @@ function Tabs:Paint(tab)
         local file, size, flags = fs:GetFont()
         tab.__pcFont = { file or _G.STANDARD_TEXT_FONT, size or 12, flags or "" }
     end
-    pcall(fs.SetFont, fs, tab.__pcFont[1], cfg.tabFontSize, tab.__pcFont[3])
+
+    -- A chosen face, or the one the tab arrived with. The locale check is the
+    -- reason this is not just a string swap: none of the Latin faces carry CJK
+    -- glyphs, and applying one to a Chinese client renders empty boxes. The
+    -- pcall then covers the other failure - a LibSharedMedia path for an addon
+    -- that has since been uninstalled - by leaving the font alone.
+    local face = cfg.tabFont
+    if face == "" or face == nil then
+        face = tab.__pcFont[1]
+    elseif PeaversCommons.ConfigManager.IsFontCompatibleWithLocale
+        and not PeaversCommons.ConfigManager.IsFontCompatibleWithLocale(face) then
+        face = tab.__pcFont[1]
+    end
+
+    if not pcall(fs.SetFont, fs, face, cfg.tabFontSize, tab.__pcFont[3]) then
+        pcall(fs.SetFont, fs, tab.__pcFont[1], cfg.tabFontSize, tab.__pcFont[3])
+    end
 
     local selected = IsSelected(frame)
     local color = selected and cfg.tabSelectedColor or cfg.tabTextColor

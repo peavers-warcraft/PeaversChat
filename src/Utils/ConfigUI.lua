@@ -52,6 +52,38 @@ local function Toggle(parent, label, key, y, indent, width, default)
     return box, y - 30
 end
 
+--- The font list, as dropdown options. Built fresh each time the page is
+--- opened rather than cached, because LibSharedMedia gains faces as other
+--- addons load and a cached list would be a list of whatever happened to be
+--- loaded first.
+local function FontOptions()
+    local Theme = PeaversCommons.Theme
+    local options = {
+        { value = "", label = "Leave the game's own tab font" },
+    }
+
+    -- The suite's own face first, where the client can render it. Not offered
+    -- on CJK clients, which it has no glyphs for.
+    if Theme and Theme.Fonts and (not Theme.UsesCustomFonts or Theme.UsesCustomFonts()) then
+        options[#options + 1] = { value = Theme.Fonts.monoSemiBold, label = "IBM Plex Mono SemiBold" }
+        options[#options + 1] = { value = Theme.Fonts.monoMedium, label = "IBM Plex Mono Medium" }
+        options[#options + 1] = { value = Theme.Fonts.monoRegular, label = "IBM Plex Mono" }
+    end
+
+    local fonts = PeaversCommons.ConfigManager.GetFonts() or {}
+    local sorted = {}
+    for path, name in pairs(fonts) do
+        sorted[#sorted + 1] = { path = path, name = name }
+    end
+    table.sort(sorted, function(a, b) return a.name < b.name end)
+
+    for _, font in ipairs(sorted) do
+        options[#options + 1] = { value = font.path, label = font.name }
+    end
+
+    return options
+end
+
 --------------------------------------------------------------------------------
 -- Appearance
 --------------------------------------------------------------------------------
@@ -281,6 +313,18 @@ function ConfigUI:BuildTabsPage(parentFrame)
     insideNote:SetWidth(width)
     y = y - 44
 
+    local tabFont = W:CreateDropdown(parentFrame, "Tab font", {
+        width = width,
+        selected = PC.Config.tabFont or "",
+        options = FontOptions(),
+        onChange = function(value)
+            PC.Config.tabFont = value
+            Apply()
+        end,
+    })
+    tabFont:SetPoint("TOPLEFT", indent, y)
+    y = y - 58
+
     local tabFontSize = W:CreateSlider(parentFrame, "Tab font size", {
         min = 8, max = 20, step = 1,
         value = PC.Config.tabFontSize or 12,
@@ -497,6 +541,22 @@ function ConfigUI:BuildLinksPage(parentFrame)
 
     local _, afterCopy = Toggle(parentFrame, "Show a copy button on each chat window", "copyButton", y, indent, width, true)
     y = afterCopy
+
+    local visibility = W:CreateDropdown(parentFrame, "Copy icon", {
+        width = width,
+        selected = PC.Config.copyButtonVisibility or "dim",
+        options = {
+            { value = "dim", label = "Faint, and bright when you hover the window" },
+            { value = "always", label = "Always visible" },
+            { value = "hover", label = "Only when you hover the window" },
+        },
+        onChange = function(value)
+            PC.Config.copyButtonVisibility = value
+            Apply()
+        end,
+    })
+    visibility:SetPoint("TOPLEFT", indent, y)
+    y = y - 58
 
     local _, afterStrip = Toggle(parentFrame, "Strip colours and icons out of copied text",
         "copyStripColors", y, indent, width, true)

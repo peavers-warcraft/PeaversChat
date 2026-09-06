@@ -31,7 +31,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 136.5 KB | 160 KB | pass |
+| Packaged size | 143.1 KB | 160 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -42,10 +42,10 @@ Scenarios driven against the real addon source, outside the game:
 | Scenario | Calls/frame | Calls/sec | Notes |
 |---|---:|---:|---|
 | chat flowing, 10 messages/sec | 0.00 | 0.0 | 0.00 client calls per message: the URL matcher is pure string work in an AddMessage hook, and never touches a widget |
-| switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 780 calls to skin every window at login, once |
+| switching tabs, 1/sec | 0.00 | 33.0 | 33 calls to repaint the whole tab row; 777 calls to skin every window at login, once |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>3,573 lines of Lua · 136.5 KB packaged · no bundled libraries</sub>
+<sub>3,764 lines of Lua · 143.1 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
@@ -64,11 +64,11 @@ than anybody switches tabs.
 
 <!-- peavers:features -->
 - A flat black chat window with a 1px hairline border, matching the rest of the Peavers UI
-- Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading
+- Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading, in a font of your choosing
 - Tabs sit inside the window: the background reaches up over the tab strip rather than stopping underneath it
 - Tabs stay readable instead of fading out when the mouse is elsewhere
 - Clickable URLs, with a matcher careful enough not to turn "ok.thanks" into a link
-- A copy button on every chat window, and a copy window that strips colours, icons and link wrappers back out
+- A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
 - Every button around the frame — chat menu, group finder, scroll arrows, voice, combat log bar — individually hideable, and hidden by default
 - The edit box moved out from under the last line of chat, with a border coloured by the channel you are about to speak in
 - Channel names abbreviated: `[Guild]` becomes `[G]`, `[Instance Leader]` becomes `[IL]`
@@ -83,7 +83,7 @@ than anybody switches tabs.
 <!-- peavers:usage -->
 Chat is skinned as soon as you log in. Everything else is optional and lives in the settings, under `/pchat`.
 
-Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are uppercase text with an accent underline, URLs are clickable, and there is a small **COPY** button in the tab strip on the right of each window.
+Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are uppercase text with an accent underline, URLs are clickable, and there is a small copy mark in the top-right corner of each window — faint until you hover the window, and it takes no space of its own.
 
 ### Slash Commands
 
