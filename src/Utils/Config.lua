@@ -131,7 +131,16 @@ local PC_DEFAULTS = {
     ----------------------------------------------------------------------------
     -- Links
     ----------------------------------------------------------------------------
-    urlLinks = true,
+    -- Off by default, which it did not used to be.
+    --
+    -- Making a URL clickable means altering the chat line, and every way of
+    -- doing that puts this addon inside the client's message path. Twice that
+    -- stopped chat working inside a dungeon; worse, a wrapped method cannot be
+    -- reliably unwrapped once another addon has hooked it too, so switching the
+    -- feature off afterwards does not always undo it. A feature that can break
+    -- chat and then refuse to let go is not a feature that should be on by
+    -- default. Everything else here is drawing, and cannot.
+    urlLinks = false,
     urlColor = { r = 0.506, g = 0.549, b = 0.973 },
     urlBrackets = true,
 

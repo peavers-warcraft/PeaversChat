@@ -522,7 +522,7 @@ function ConfigUI:BuildLinksPage(parentFrame)
     local _, newY = W:CreateSectionHeader(parentFrame, "Links", indent, y)
     y = newY - 8
 
-    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, true)
+    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, false)
     y = afterLinks
 
     local _, afterBrackets = Toggle(parentFrame, "Put them in brackets", "urlBrackets", y, indent, width, true)
@@ -547,12 +547,13 @@ function ConfigUI:BuildLinksPage(parentFrame)
     local linkNote = W:CreateLabel(parentFrame,
         "Clicking one opens the copy window with the address selected: an addon " ..
             "cannot open a browser, so click, Ctrl+C, Escape is as close as the " ..
-            "game gets. Inside a dungeon, raid, arena or battleground the " ..
-            "addon stops touching chat messages entirely. Altering them there " ..
-            "has twice stopped chat working, from two different places in the " ..
-            "code, while being fine everywhere else. Until that is explained " ..
-            "the message path in instances is left alone - turn the box above " ..
-            "on only if you want to test whether it has been fixed.",
+            "game gets. This is the only part of the addon that alters a chat " ..
+            "message, and it ships switched off. Doing so has twice stopped " ..
+            "chat working inside a dungeon, and a hooked message method cannot " ..
+            "reliably be unhooked once another addon has hooked it too, so " ..
+            "switching this back off afterwards does not always undo it. " ..
+            "Everything else here only draws, and cannot affect a message at " ..
+            "all. Turn it on if you want links and can live with that.",
         { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
     linkNote:SetPoint("TOPLEFT", indent, y)
     linkNote:SetWidth(width)

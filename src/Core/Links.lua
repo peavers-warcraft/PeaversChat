@@ -260,11 +260,22 @@ local function HookFrame(frame)
     frame.__pcWrapper = wrapper
 end
 
+--- Take the wrapper back off - as far as that is possible, which is not as far
+--- as it should be, and is the reason clickable URLs now ship switched off.
+---
+--- If nothing has hooked AddMessage since we did, this restores the client's
+--- own method and we are cleanly gone. If something has, we cannot leave: their
+--- wrapper captured ours as its upvalue, so putting the original back would
+--- both discard their hook and still leave ours being called through theirs.
+--- Once a method has been wrapped there is no reliable way out of the chain.
+---
+--- That is a hard limit on the whole technique, not a bug to be fixed here. It
+--- is why "turn it off" cannot be relied on to undo this, and why the honest
+--- answer is not to install it in the first place unless somebody asks for it.
 local function UnhookFrame(frame)
     local original = frame.__pcAddMessage
     if not original then return end
 
-    -- Only unwind if we are still the outermost hook.
     if frame.AddMessage == frame.__pcWrapper then
         frame.AddMessage = original
         frame.__pcAddMessage = nil
