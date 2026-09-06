@@ -522,7 +522,7 @@ function ConfigUI:BuildLinksPage(parentFrame)
     local _, newY = W:CreateSectionHeader(parentFrame, "Links", indent, y)
     y = newY - 8
 
-    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, true)
+    local _, afterLinks = Toggle(parentFrame, "Make URLs clickable", "urlLinks", y, indent, width, false)
     y = afterLinks
 
     local _, afterBrackets = Toggle(parentFrame, "Put them in brackets", "urlBrackets", y, indent, width, true)
@@ -544,12 +544,13 @@ function ConfigUI:BuildLinksPage(parentFrame)
         "Clicking one opens the copy window with the address selected: an addon " ..
             "cannot open a browser, so click, Ctrl+C, Escape is as close as the " ..
             "game gets. This is the only part of the addon that alters a chat " ..
-            "message. It does so from beside the client's message path rather " ..
-            "than inside it: the game composes the line against a window of " ..
-            "ours and the finished text is handed to the real one, the same " ..
-            "way any addon prints to chat. Nothing on a Blizzard chat frame is " ..
-            "replaced, and turning this off calls the game's own handler with " ..
-            "the game's own window - absent rather than merely idle.",
+            "message, and it is off until the cause of chat failing in Mythic+ " ..
+            "is known rather than guessed at. Three ways of doing it have been " ..
+            "tried and all three were followed by the same report. Off means " ..
+            "the game's chat handler is never replaced at all - not idled, not " ..
+            "bypassed, never touched. Everything else in this addon draws a " ..
+            "background, moves a button or changes a font, and none of it can " ..
+            "affect a message.",
         { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
     linkNote:SetPoint("TOPLEFT", indent, y)
     linkNote:SetWidth(width)

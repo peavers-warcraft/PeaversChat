@@ -656,6 +656,15 @@ local function Apply(frame)
     -- the buffer, so calling it on every refresh would quietly wipe the history
     -- every time somebody moved a slider.
     if frame.SetMaxLines and cfg.maxLines and frame.__pcMaxLines ~= cfg.maxLines then
+        -- Remember what the client had, because this is one of the few things
+        -- here that outlives switching the addon off - and anything that
+        -- outlives being switched off cannot be ruled out by switching it off,
+        -- which is the whole point of having a switch.
+        if frame.__pcOrigMaxLines == nil and frame.GetMaxLines then
+            local ok, lines = pcall(frame.GetMaxLines, frame)
+            frame.__pcOrigMaxLines = (ok and lines) or false
+        end
+
         frame.__pcMaxLines = cfg.maxLines
         pcall(frame.SetMaxLines, frame, cfg.maxLines)
     end
@@ -665,6 +674,15 @@ local function Restore(frame)
     -- Forget what was applied, so switching back on re-applies it all.
     frame.__pcSkinState = nil
     frame.__pcPainted = nil
+
+    -- Hand the scrollback size back too. It empties the window, which is a
+    -- shame, but leaving it changed would mean the addon was still doing
+    -- something after being told to stop.
+    if frame.__pcOrigMaxLines and frame.SetMaxLines then
+        pcall(frame.SetMaxLines, frame, frame.__pcOrigMaxLines)
+        frame.__pcMaxLines = nil
+        frame.__pcOrigMaxLines = nil
+    end
 
     Skin:HideBox(frame)
     Skin:HideStrip(frame)
