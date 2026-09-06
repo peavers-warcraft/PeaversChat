@@ -21,6 +21,35 @@ local function InstallHooks()
     PC.EditBox:InstallHooks()
 end
 
+--- The smallest thing this addon can be while still being itself: a flat
+--- background and a font on the chat window, and nothing else whatsoever.
+---
+--- Everything switched off here is something that touches an object belonging
+--- to the client - restyling its tabs, hiding its buttons, drawing on its dock,
+--- rewording its channel strings, resizing its message buffer. What remains
+--- touches only the chat frame it was given, and only to draw on it.
+---
+--- This exists because seven attempts to name the cause of chat failing in
+--- Mythic+ by reasoning about it have been wrong, and bisecting is what should
+--- have been done instead.
+local MINIMAL = {
+    styleTabs = false,          -- no restyling of the client's tabs
+    tabsInside = false,         -- nothing drawn on the client's dock
+    styleEditBox = false,       -- the edit box left where the client put it
+    copyButton = false,         -- no button parented to the dock
+    shortChannelNames = false,  -- the client's own channel wording
+    maxLines = 0,               -- the message buffer never reallocated
+    edgeToEdge = false,         -- no protected function called or hooked
+
+    -- "Show" every button, which for this addon means "hide none of them".
+    showMenuButton = true,
+    showSocialButton = true,
+    showScrollButtons = true,
+    showBottomButton = true,
+    showVoiceButtons = true,
+    showCombatLogBar = true,
+}
+
 -- Register slash commands
 PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     default = function()
@@ -47,6 +76,37 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     end,
     copy = function()
         PC.Copy:ShowChat()
+    end,
+    minimal = function()
+        local cfg = PC.Config
+        local backup = cfg.minimalBackup or {}
+        local leaving = next(backup) ~= nil
+
+        if leaving then
+            for key, value in pairs(backup) do cfg[key] = value end
+            cfg.minimalBackup = {}
+        else
+            local saved = {}
+            for key, value in pairs(MINIMAL) do
+                saved[key] = cfg[key]
+                cfg[key] = value
+            end
+            cfg.minimalBackup = saved
+        end
+
+        cfg:Save()
+
+        PC.Channels:Apply()
+        PC.Buttons:Refresh()
+        PC.Frames:Refresh()
+        PC.Tabs:PaintAll()
+
+        Utils.Print(PC, leaving
+            and "Everything back on."
+            or "Minimal mode: a background and a font, and nothing else. "
+                .. "Nothing here touches the client's tabs, buttons, dock, "
+                .. "channel strings or message buffer. Reload, then test. "
+                .. "/pchat minimal again puts it all back.")
     end,
     safe = function()
         -- Channel abbreviations are the only thing left that changes what a
@@ -148,6 +208,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat - Open settings")
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
+        print("  /pchat minimal - Toggle down to just a background and a font")
         print("  /pchat safe - Toggle the channel abbreviations off")
         print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat trace - Count chat events as they arrive, then report")

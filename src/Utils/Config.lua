@@ -156,6 +156,9 @@ local PC_DEFAULTS = {
     -- player already set in the game's own options.
     timestamps = "default",
 
+    -- Where /pchat minimal keeps what it turned off, so it can put it back.
+    minimalBackup = {},
+
     debugMode = false,
     DEBUG_ENABLED = false,
 }
