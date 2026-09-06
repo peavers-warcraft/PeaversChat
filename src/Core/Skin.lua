@@ -549,34 +549,82 @@ end
 -- to the left of the screen stops short against nothing you can see. Zeroing
 -- the insets frees it.
 --
--- Done once per window and never hooked. An earlier version installed a
--- hooksecurefunc on SetClampRectInsets so the client could never re-assert its
--- own margin - which meant a hook on a protected function sitting on every chat
--- window for the session, and no way to take it off again. It was the wrong
--- trade even before it became a suspect: the cost of not hooking is that if the
--- client ever does re-assert its insets the window stops reaching the edge
--- until the next reload, and the cost of hooking was permanently touching a
--- function the client protects for a reason.
+-- Never hooked. An earlier version installed a hooksecurefunc on
+-- SetClampRectInsets so the client could never re-assert its own margin - a
+-- hook on a protected function sitting on every chat window for the session,
+-- with no way to take it off again. That was the wrong trade even before it
+-- became a suspect for chat breaking in Mythic+.
+--
+-- The version after it swung too far the other way and cleared the insets
+-- exactly once per window per session. Anything that put a margin back - Edit
+-- Mode applying a layout does, and does not need a reload to do it - left the
+-- window stuck short of the edge until the next login, which is how "the chat
+-- box still will not go all the way left" survived a fix for it.
+--
+-- So: no hook, but no latch either. Each refresh reads the insets back and
+-- clears them again only if something has re-asserted a margin. That is a read
+-- and a conditional write on the handler cadence - login, docking, layout
+-- changes - and nothing per frame.
 --
 -- Protected in combat, so the attempt is skipped there and made on the next
 -- refresh instead. The client's original insets are remembered, so switching
 -- the addon off gives them back.
 --------------------------------------------------------------------------------
 
+-- The insets the client currently has on this frame, or nil if it will not say.
+local function CurrentClamp(frame)
+    if type(frame.GetClampRectInsets) ~= "function" then return nil end
+    local ok, left, right, top, bottom = pcall(frame.GetClampRectInsets, frame)
+    if not ok or left == nil then return nil end
+    return left, right, top, bottom
+end
+
+Skin.CurrentClamp = CurrentClamp
+
 local function ClearClamp(frame)
     if not PC.Config.enabled or not PC.Config.edgeToEdge then return end
-    if frame.__pcClampCleared then return end
     if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then return end
     if type(frame.SetClampRectInsets) ~= "function" then return end
 
-    if frame.__pcClamp == nil and frame.GetClampRectInsets then
-        local ok, left, right, top, bottom = pcall(frame.GetClampRectInsets, frame)
-        frame.__pcClamp = (ok and left) and { left, right, top, bottom } or false
+    local left, right, top, bottom = CurrentClamp(frame)
+
+    -- Remember the client's own margin the first time we see it, so switching
+    -- the addon off can give it back. Recorded before the first clear and never
+    -- overwritten, or the "original" would become our own zeroes.
+    if frame.__pcClamp == nil then
+        frame.__pcClamp = left and { left, right, top, bottom } or false
+    end
+
+    -- Ask what the insets are now rather than remembering that we cleared them
+    -- once. The old latch meant exactly one attempt per window per session, so
+    -- anything that re-asserted a margin afterwards - Edit Mode applying a
+    -- layout is the obvious one, and it does not need a reload to happen - left
+    -- the window stuck short of the edge with no way back but /reload.
+    --
+    -- This is still not a hook. It is a read and a conditional write on the same
+    -- cadence as every other handler: login, a docking change, a layout change.
+    -- Nothing here runs per frame.
+    if left == nil then
+        -- The client will not report them; fall back to clearing once, which is
+        -- what the previous version did in every case.
+        if frame.__pcClampCleared then return end
+        frame.__pcClampCleared = true
+        pcall(frame.SetClampRectInsets, frame, 0, 0, 0, 0)
+        return
+    end
+
+    if left == 0 and right == 0 and top == 0 and bottom == 0 then
+        frame.__pcClampCleared = true
+        return
     end
 
     frame.__pcClampCleared = true
     pcall(frame.SetClampRectInsets, frame, 0, 0, 0, 0)
 end
+
+-- Exposed for Position, which has to clear the margin before it places a window
+-- against the screen edge - otherwise the clamp shoves it straight back.
+Skin.ClearClampFor = ClearClamp
 
 --------------------------------------------------------------------------------
 -- Text

@@ -90,6 +90,14 @@ function Position:Apply(frame)
     local width = tonumber(cfg.chatWidth) or 0
     local height = tonumber(cfg.chatHeight) or 0
 
+    -- Clear the client's clamping margin before moving, not after. A frame that
+    -- is clamped to the screen with a left inset cannot be placed against the
+    -- left edge: SetPoint puts it there and the clamp shoves it back by the
+    -- inset, which looks exactly like the position setting being ignored.
+    if PC.Skin and PC.Skin.ClearClampFor then
+        PC.Skin.ClearClampFor(frame)
+    end
+
     -- Size first, then position: setting a size can nudge an anchored frame, so
     -- doing it the other way round leaves the window a few pixels out.
     if width > 0 and height > 0 then

@@ -299,6 +299,11 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         -- Where the window background is drawn and what it hangs from.
         PC.Diagnostics:Style()
     end,
+    edge = function()
+        -- Why the window will not reach the screen edge: the clamping margin,
+        -- the anchor, and whether anything is trying to place it at all.
+        PC.Diagnostics:Edge()
+    end,
     channels = function()
         -- What was actually done to each channel format string, and why. This
         -- is the first question when a chat line comes out wrong, and it used
@@ -386,6 +391,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat enable - Skin the chat windows")
         print("  /pchat move - Pin the chat window where it is now")
         print("  /pchat move off - Stop managing its position")
+        print("  /pchat edge - Why the window will not reach the screen edge")
         print("  /pchat disable - Hand chat back to Blizzard")
         print("  /pchat defaults - Put every PeaversChat setting back to its default")
         print("  /pchat reset - Reset the chat layout, then reskin it")

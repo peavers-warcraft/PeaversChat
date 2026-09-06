@@ -202,6 +202,65 @@ function Diagnostics:Style()
     for _ in pairs(hosts) do count = count + 1 end
     print(("  %d distinct strip host(s). More than one means the background is "
         .. "drawn more than once and will look doubled where they overlap."):format(count))
+
+    self:Edge()
+end
+
+--------------------------------------------------------------------------------
+-- Why the window will not reach the edge
+--
+-- "It still will not go all the way left" has three different causes that look
+-- identical from the outside: the client's clamping margin is back, the window
+-- is anchored somewhere other than where you think, or the position feature is
+-- switched off and you are looking at a window nobody moved.
+--
+-- Guessing between them cost two rounds, so they are printed instead.
+--------------------------------------------------------------------------------
+
+function Diagnostics:Edge()
+    local cfg = PC.Config
+    print("|cff3abdf7PeaversChat|r: screen edge")
+
+    print(("  edgeToEdge=%s  positionEnabled=%s"):format(
+        tostring(cfg.edgeToEdge), tostring(cfg.positionEnabled)))
+
+    if cfg.positionEnabled then
+        print(("  wanted: %s  %d, %d  %dx%d"):format(
+            tostring(cfg.chatPoint), cfg.chatX or 0, cfg.chatY or 0,
+            cfg.chatWidth or 0, cfg.chatHeight or 0))
+    end
+
+    PC.Frames:Each(function(frame)
+        local left, right, top, bottom = PC.Skin.CurrentClamp(frame)
+
+        local clamp
+        if left == nil then
+            clamp = "clamp=unreadable"
+        elseif left == 0 and right == 0 and top == 0 and bottom == 0 then
+            clamp = "clamp=clear"
+        else
+            -- The left inset is the one that matters for the left edge. A
+            -- non-zero value here IS the answer to the question.
+            clamp = ("clamp=%g,%g,%g,%g  <- a margin is back"):format(left, right, top, bottom)
+        end
+
+        local point, relativeTo, _, x, y = frame:GetPoint()
+        local anchor = point
+            and ("%s of %s at %d, %d"):format(point, Named(relativeTo), x or 0, y or 0)
+            or "no anchor"
+
+        print(("  %s  %s  clampedToScreen=%s  userPlaced=%s  %s"):format(
+            Named(frame), clamp,
+            tostring(frame.IsClampedToScreen and frame:IsClampedToScreen() or "?"),
+            tostring(frame.IsUserPlaced and frame:IsUserPlaced() or "?"),
+            anchor))
+    end)
+
+    if _G.EditModeManagerFrame then
+        print("  Edit Mode is present. It owns chat window geometry and reasserts "
+            .. "it when a layout is applied, which is the usual reason a margin "
+            .. "comes back after being cleared.")
+    end
 end
 
 function Diagnostics:Toggle(argument)
