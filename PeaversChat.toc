@@ -10,6 +10,7 @@
 
 ## X-Website: https://peavers.io
 ## X-Source-Code: https://github.com/peavers-warcraft/PeaversChat
+## X-Curse-Project-ID: 1685185
 
 ## Dependencies: PeaversCommons, PeaversConfig
 ## SavedVariables: PeaversChatDB
