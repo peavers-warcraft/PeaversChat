@@ -75,6 +75,10 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         -- so it reports what the client sent rather than what survived.
         PC.Diagnostics:Toggle(rest)
     end,
+    style = function()
+        -- Where the window background is drawn and what it hangs from.
+        PC.Diagnostics:Style()
+    end,
     channels = function()
         -- What was actually done to each channel format string, and why. This
         -- is the first question when a chat line comes out wrong, and it used
@@ -156,6 +160,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat safe - Toggle off everything that touches an incoming message")
         print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat trace - Count chat events as they arrive, then report")
+        print("  /pchat style - Show where the window background is drawn")
         print("  /pchat enable - Skin the chat windows")
         print("  /pchat disable - Hand chat back to Blizzard")
         print("  /pchat defaults - Put every PeaversChat setting back to its default")

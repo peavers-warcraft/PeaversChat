@@ -162,6 +162,51 @@ function Diagnostics:Report()
         .. "by the client and dropped after that.")
 end
 
+--------------------------------------------------------------------------------
+-- Layout
+--
+-- Where the background is being drawn and what it hangs from. Written after a
+-- tab-row background that stopped halfway across took two rounds to explain:
+-- the tabs were parented into a scroll frame, and a scroll frame clips its
+-- child, so the textures were cut off where the tabs were not. None of that is
+-- visible from the outside, and all of it is one line of output.
+--------------------------------------------------------------------------------
+
+local function Named(widget)
+    if not widget then return "none" end
+    if type(widget.GetName) ~= "function" then return "unnamed" end
+    return widget:GetName() or "unnamed"
+end
+
+function Diagnostics:Style()
+    print("|cff3abdf7PeaversChat|r: chat window layout")
+
+    local hosts = {}
+
+    PC.Frames:Each(function(frame)
+        local tab = PC.Frames:TabFor(frame)
+        local parent = tab and type(tab.GetParent) == "function" and tab:GetParent() or nil
+        local host = PC.Skin.StripHost(frame)
+
+        if host then hosts[host] = true end
+
+        local alpha = (host and type(host.GetAlpha) == "function" and host:GetAlpha()) or 1
+        print(("  %s shown=%s strip=%dpx tab parent=%s host=%s alpha=%.2f drawn=%s"):format(
+            Named(frame),
+            tostring(frame:IsShown()),
+            math.floor((PC.Skin.StripHeight and PC.Skin.StripHeight(frame) or 0) + 0.5),
+            Named(parent),
+            Named(host),
+            alpha,
+            (host and host.peaversStrip) and "yes" or "no"))
+    end)
+
+    local count = 0
+    for _ in pairs(hosts) do count = count + 1 end
+    print(("  %d distinct strip host(s). More than one means the background is "
+        .. "drawn more than once and will look doubled where they overlap."):format(count))
+end
+
 function Diagnostics:Toggle(argument)
     argument = tostring(argument or ""):lower():gsub("%s", "")
 

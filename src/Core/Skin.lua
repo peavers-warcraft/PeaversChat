@@ -235,12 +235,43 @@ end
 --- The frame the tabs are children of: the dock when docked, the chat frame
 --- itself when not. Returns nil when it is neither - UIParent, say - because
 --- putting our textures there would leak them into a frame that outlives chat.
+--- Is `ancestor` somewhere above `widget` in the parent chain?
+local function IsAncestorOf(ancestor, widget)
+    local depth = 0
+    local node = widget
+
+    while node and depth < 12 do
+        if node == ancestor then return true end
+        if type(node.GetParent) ~= "function" then return false end
+        node = node:GetParent()
+        depth = depth + 1
+    end
+
+    return false
+end
+
 function Skin.StripHost(frame)
     local tab = PC.Frames:TabFor(frame)
     if not tab or type(tab.GetParent) ~= "function" then return nil end
 
     local host = tab:GetParent()
     if not host or host == _G.UIParent then return nil end
+
+    -- Prefer the dock itself over whatever inner frame the tabs happen to hang
+    -- from. The client parents docked tabs into a scroll frame's child so the
+    -- row can overflow, and a scroll frame clips its child - so textures drawn
+    -- there are cut off at the scroll rect while the tabs, being frames, carry
+    -- on past it. That is a background that stops halfway across the tab row.
+    --
+    -- The dock is an ancestor of the tabs either way, so hosting the strip
+    -- there keeps the whole point of hosting it on an ancestor: a frame's
+    -- regions are beneath its child frames by definition. It simply is not
+    -- inside anything that clips.
+    local dock = _G.GeneralDockManager
+    if dock and dock ~= _G.UIParent and IsAncestorOf(dock, tab) then
+        return dock
+    end
+
     return host
 end
 

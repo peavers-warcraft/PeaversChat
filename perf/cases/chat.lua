@@ -345,6 +345,7 @@ _G.PeaversCommons = {
 }
 
 local dock = NewFrame("GeneralDockManager", 0)
+dock._parent = _G.UIParent
 
 local chatFrames, chatTabs = {}, {}
 for i, windowName in ipairs({ "General", "Combat Log", "Whisper" }) do

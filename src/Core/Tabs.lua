@@ -283,15 +283,17 @@ local function Apply(frame)
     -- background reaches up behind it, anything left alive there shows. Guarded
     -- against UIParent: an undocked tab is parented to its own chat frame, and
     -- a stray dock arrangement must never have us sweeping the whole UI.
-    local dock = tab:GetParent()
-    if dock and dock ~= frame and dock ~= _G.UIParent then
-        Skin.KillChrome(dock)
-        -- Alpha is inherited, so pinning the tab alone is not enough: a faded
-        -- dock takes its tabs and the strip background down with it however
-        -- opaque they think they are.
-        LockAlpha(dock)
+    -- Both the frame the tabs hang from and the one the strip is drawn on: the
+    -- client nests a scroll frame between the two, and either can carry art or
+    -- a fade. Alpha is inherited, so pinning the tab alone is not enough - a
+    -- faded ancestor takes its tabs and the strip down with it however opaque
+    -- they think they are.
+    for _, ancestor in ipairs({ tab:GetParent(), Skin.StripHost(frame) }) do
+        if ancestor and ancestor ~= frame and ancestor ~= _G.UIParent then
+            Skin.KillChrome(ancestor)
+            LockAlpha(ancestor)
+        end
     end
-    if _G.GeneralDockManager then Skin.KillChrome(_G.GeneralDockManager) end
 
     LockAlpha(tab)
     if Tabs:Paint(tab) and not painting then RelayoutDock() end
@@ -308,10 +310,11 @@ local function Restore(frame)
 
     UnlockAlpha(tab)
 
-    local dock = tab:GetParent()
-    if dock and dock ~= frame and dock ~= _G.UIParent then
-        UnlockAlpha(dock)
-        Skin.ReviveChrome(dock)
+    for _, ancestor in ipairs({ tab:GetParent(), Skin.StripHost(frame) }) do
+        if ancestor and ancestor ~= frame and ancestor ~= _G.UIParent then
+            UnlockAlpha(ancestor)
+            Skin.ReviveChrome(ancestor)
+        end
     end
 
     if tab.peaversUnderline then tab.peaversUnderline:Hide() end
