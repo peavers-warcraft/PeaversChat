@@ -451,6 +451,9 @@ PC.Buttons:Initialize()
 PC.Copy:Initialize()
 
 PC.Frames:Initialize()
+PC.Frames:InstallHooks()
+PC.Tabs:InstallHooks()
+PC.EditBox:InstallHooks()
 PC.Channels:Initialize()
 
 local loginCalls = Stubs.TotalCalls()

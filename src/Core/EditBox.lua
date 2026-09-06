@@ -198,8 +198,12 @@ end
 -- Initialisation
 --------------------------------------------------------------------------------
 
-function EditBox:Initialize()
-    Frames:RegisterHandler("editbox", Apply, Restore)
+local hooksInstalled = false
+
+--- Kept out of Initialize: see the note on Frames:InstallHooks.
+function EditBox:InstallHooks()
+    if hooksInstalled then return end
+    hooksInstalled = true
 
     -- The channel changed, so the header and the border colour did too. This is
     -- the client's own call site, which is why custom channels work without a
@@ -217,6 +221,10 @@ function EditBox:Initialize()
             if editBox then Position(editBox) end
         end)
     end
+end
+
+function EditBox:Initialize()
+    Frames:RegisterHandler("editbox", Apply, Restore)
 end
 
 return EditBox

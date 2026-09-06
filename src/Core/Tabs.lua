@@ -370,8 +370,13 @@ end
 -- Initialisation
 --------------------------------------------------------------------------------
 
-function Tabs:Initialize()
-    Frames:RegisterHandler("tabs", Apply, Restore)
+local hooksInstalled = false
+
+--- Kept out of Initialize: see the note on Frames:InstallHooks. A hook cannot
+--- be uninstalled, so the only way for "off" to mean off is never to put one on.
+function Tabs:InstallHooks()
+    if hooksInstalled then return end
+    hooksInstalled = true
 
     -- Selection changed: repaint. Each of these is guarded because chat is one
     -- of the areas Blizzard reworks, and a missing global should cost the
@@ -414,6 +419,10 @@ function Tabs:Initialize()
             end
         end)
     end
+end
+
+function Tabs:Initialize()
+    Frames:RegisterHandler("tabs", Apply, Restore)
 end
 
 return Tabs

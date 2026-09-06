@@ -65,6 +65,7 @@ local PC_DEFAULTS = {
     -- and it is the only thing added since that touches a protected API rather
     -- than drawing a texture. Off until that is ruled in or out.
     edgeToEdge = false,
+    edgeToEdgeWithdrawn = false,
 
     ----------------------------------------------------------------------------
     -- Text

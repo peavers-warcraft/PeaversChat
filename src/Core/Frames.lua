@@ -154,8 +154,20 @@ end
 -- Initialisation
 --------------------------------------------------------------------------------
 
-function Frames:Initialize()
-    self:Sweep()
+local hooksInstalled = false
+
+--- The hooks, kept out of Initialize so that loading with the addon switched
+--- off installs nothing at all.
+---
+--- hooksecurefunc cannot be undone. That is fine when a hook is wanted and a
+--- serious problem when it is not: /pchat disable could turn off everything
+--- this addon *does* and still leave ten of these sitting on the client's chat
+--- functions, which is why disabling the addon in the addon list fixed chat and
+--- disabling it from inside did not. The two are now the same thing after a
+--- reload, because with the addon off none of them go on in the first place.
+function Frames:InstallHooks()
+    if hooksInstalled then return end
+    hooksInstalled = true
 
     -- A temporary window (whisper, pet battle, instance chat) is a chat frame
     -- that did not exist a moment ago. Adopting it here rather than waiting for
@@ -185,6 +197,10 @@ function Frames:Initialize()
             if PC.Config.enabled then Frames:Refresh() end
         end)
     end
+end
+
+function Frames:Initialize()
+    self:Sweep()
 end
 
 return Frames

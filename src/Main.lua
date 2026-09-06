@@ -13,6 +13,14 @@ local BUTTON_KEYS = {
     "showBottomButton", "showVoiceButtons", "showCombatLogBar",
 }
 
+--- Every hook this addon puts on one of the client's chat functions. Idempotent,
+--- so calling it again after /pchat enable is free.
+local function InstallHooks()
+    PC.Frames:InstallHooks()
+    PC.Tabs:InstallHooks()
+    PC.EditBox:InstallHooks()
+end
+
 -- Register slash commands
 PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     default = function()
@@ -22,6 +30,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Config.enabled = true
         PC.Config:Save()
         PC.Channels:Apply()
+        InstallHooks()
         PC.Buttons:Refresh()
         PC.Frames:Refresh()
         Utils.Print(PC, "Chat skinned.")
@@ -32,7 +41,9 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Channels:Restore()
         PC.Frames:Restore()
         PC.Buttons:Refresh()
-        Utils.Print(PC, "Chat handed back to Blizzard. /pchat enable turns it back on.")
+        Utils.Print(PC, "Chat handed back to Blizzard. /pchat enable turns it back on. "
+            .. "A hook cannot be uninstalled, so reload for this to be exactly "
+            .. "the same as the addon not being loaded.")
     end,
     copy = function()
         PC.Copy:ShowChat()
@@ -157,6 +168,17 @@ PeaversCommons.Events:Init(addonName, function()
     -- that number saved and nothing in the four keys that replaced it, and a
     -- saved setting shadows a default forever - so without this their carefully
     -- chosen padding would silently become ours. Runs once.
+    -- Forced off once. The screen-edge feature calls and hooks a protected
+    -- function, it is the current suspect for chat failing in Mythic+, and
+    -- changing its default does nothing for somebody who already has it saved
+    -- as on. Being a suspect is reason enough not to wait for them to find the
+    -- checkbox.
+    if not PC.Config.edgeToEdgeWithdrawn then
+        PC.Config.edgeToEdge = false
+        PC.Config.edgeToEdgeWithdrawn = true
+        PC.Config:Save()
+    end
+
     if not PC.Config.paddingSplit then
         local legacy = tonumber(PC.Config.padding)
         if legacy then
@@ -183,6 +205,14 @@ PeaversCommons.Events:Init(addonName, function()
 
     PC.Frames:Initialize()
     PC.Channels:Initialize()
+
+    -- The hooks go on only when the addon is on. hooksecurefunc cannot be
+    -- undone, so a hook installed at load is there for the session whatever the
+    -- settings say afterwards - which is how /pchat disable ended up meaning
+    -- something different from disabling the addon in the addon list. Loading
+    -- with it switched off now installs nothing at all, and the two are the
+    -- same thing.
+    if PC.Config.enabled then InstallHooks() end
 
     if PC.ConfigUI and PC.ConfigUI.Initialize then
         PC.ConfigUI:Initialize()
