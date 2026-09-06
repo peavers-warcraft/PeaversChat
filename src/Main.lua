@@ -50,6 +50,26 @@ local MINIMAL = {
     showCombatLogBar = true,
 }
 
+--- The groups /pchat try can hand back, one at a time, while minimal mode is on.
+---
+--- Ordered by suspicion rather than alphabetically: both of the per-message
+--- storms found so far were in the tab code, and the tab code is also the only
+--- part of this addon that hooks the client's chat functions or draws on its
+--- dock. If there is a third, that is where it is.
+local TRY_GROUPS = {
+    tabs = { "styleTabs", "tabsInside" },
+    copy = { "copyButton" },
+    editbox = { "styleEditBox" },
+    buttons = {
+        "showMenuButton", "showSocialButton", "showScrollButtons",
+        "showBottomButton", "showVoiceButtons", "showCombatLogBar",
+    },
+    channels = { "shortChannelNames" },
+    buffer = { "maxLines" },
+}
+
+local TRY_ORDER = { "tabs", "buttons", "copy", "editbox", "channels", "buffer" }
+
 -- Register slash commands
 PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     default = function()
@@ -76,6 +96,55 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     end,
     copy = function()
         PC.Copy:ShowChat()
+    end,
+    try = function(rest)
+        local cfg = PC.Config
+        local backup = cfg.minimalBackup or {}
+
+        if next(backup) == nil then
+            Utils.Print(PC, "Not in minimal mode - there is nothing being held back. "
+                .. "/pchat minimal first.")
+            return
+        end
+
+        local group = tostring(rest or ""):lower():gsub("%s", "")
+
+        if group == "" or not TRY_GROUPS[group] then
+            Utils.Print(PC, "Hand one group back at a time, then test:")
+            for _, name in ipairs(TRY_ORDER) do
+                local held = false
+                for _, key in ipairs(TRY_GROUPS[name]) do
+                    if backup[key] ~= nil then held = true end
+                end
+                print(("  /pchat try %-9s %s"):format(name, held and "- still held back" or "- already back on"))
+            end
+            return
+        end
+
+        -- Taken out of the backup as it is handed back, so leaving minimal mode
+        -- does not undo what has already been re-enabled.
+        local restored = 0
+        for _, key in ipairs(TRY_GROUPS[group]) do
+            if backup[key] ~= nil then
+                cfg[key] = backup[key]
+                backup[key] = nil
+                restored = restored + 1
+            end
+        end
+        cfg.minimalBackup = backup
+        cfg:Save()
+
+        PC.Channels:Apply()
+        PC.Buttons:Refresh()
+        PC.Frames:Refresh()
+        PC.Tabs:PaintAll()
+
+        if restored == 0 then
+            Utils.Print(PC, group .. " was already back on.")
+        else
+            Utils.Print(PC, group .. " is back on. Reload, then test. If chat holds, "
+                .. "/pchat try the next one.")
+        end
     end,
     minimal = function()
         local cfg = PC.Config
@@ -209,6 +278,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
         print("  /pchat minimal - Toggle down to just a background and a font")
+        print("  /pchat try <group> - Hand one group back while minimal, to find a culprit")
         print("  /pchat safe - Toggle the channel abbreviations off")
         print("  /pchat channels - Show what was changed in the channel formats")
         print("  /pchat trace - Count chat events as they arrive, then report")
