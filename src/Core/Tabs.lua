@@ -49,6 +49,10 @@ local function TabText(tab)
     return nil
 end
 
+--- Public: Skin measures the strip from the tab's text, and this is how it
+--- finds it without duplicating the three places Blizzard has kept that string.
+Tabs.FontString = TabText
+
 local function TabGlow(tab)
     if tab.glow then return tab.glow end
     local name = tab:GetName()
@@ -273,6 +277,11 @@ local function Apply(frame)
 
     LockAlpha(tab)
     if Tabs:Paint(tab) and not painting then RelayoutDock() end
+
+    -- The strip above the window is measured from the tab's text, and the text
+    -- has only just become ours - a different size, possibly a different casing.
+    -- Skin measured Blizzard's when it ran; this is the corrected number.
+    if PC.Skin.RefreshStrip then PC.Skin:RefreshStrip(frame) end
 end
 
 local function Restore(frame)

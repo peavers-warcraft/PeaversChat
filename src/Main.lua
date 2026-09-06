@@ -100,6 +100,33 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Frames:Refresh()
         Utils.Print(PC, anyHidden and "Every chat button shown." or "Every chat button hidden.")
     end,
+    defaults = function()
+        -- Saved settings shadow the defaults forever, so somebody who installed
+        -- an earlier build never sees a changed default however much better it
+        -- is. This is the way to take the new ones.
+        local cfg = PC.Config
+        for key, value in pairs(cfg.defaults or {}) do
+            if type(value) == "table" then
+                -- A fresh table per key: assigning the defaults table itself
+                -- would alias it, and the next edit would rewrite the defaults.
+                local copy = {}
+                for k, v in pairs(value) do copy[k] = v end
+                cfg[key] = copy
+            else
+                cfg[key] = value
+            end
+        end
+        cfg:Save()
+
+        PC.Links:Refresh()
+        PC.Channels:Apply()
+        PC.Channels:ApplyTimestamps()
+        PC.Buttons:Refresh()
+        PC.Frames:Refresh()
+        PC.Tabs:PaintAll()
+
+        Utils.Print(PC, "Every setting back to its shipped default.")
+    end,
     reset = function()
         if type(_G.FCF_ResetChatWindows) ~= "function" then
             Utils.Print(PC, "This build has no chat reset to call.")
@@ -131,6 +158,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat trace - Count chat events as they arrive, then report")
         print("  /pchat enable - Skin the chat windows")
         print("  /pchat disable - Hand chat back to Blizzard")
+        print("  /pchat defaults - Put every PeaversChat setting back to its default")
         print("  /pchat reset - Reset the chat layout, then reskin it")
         print("  /pchat info - Print what is currently skinned")
     end

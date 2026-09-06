@@ -244,6 +244,9 @@ function Skin.StripHost(frame)
     return host
 end
 
+--- Breathing room above the tab text, in pixels.
+local TEXT_MARGIN = 5
+
 --- How far above the chat frame the tab strip reaches.
 ---
 --- Measured off the tab rather than assumed, because where Blizzard puts the
@@ -263,7 +266,23 @@ local function StripHeight(frame)
 
     if cfg.tabStripHeight and cfg.tabStripHeight > 0 then return cfg.tabStripHeight end
 
-    local tabTop, frameTop = tab:GetTop(), frame:GetTop()
+    local frameTop = frame:GetTop()
+
+    -- Measure to the top of the word, not the top of the tab. Blizzard's tab
+    -- frame carries a good deal of dead space above its text, and a strip drawn
+    -- to cover the frame covers that dead space too - which is exactly what
+    -- reads as too much padding above the tabs. TEXT_MARGIN is the breathing
+    -- room the word gets, and it is the only number here that is a taste
+    -- judgement rather than a measurement.
+    local fontString = PC.Tabs and PC.Tabs.FontString and PC.Tabs.FontString(tab)
+    local textTop = fontString and fontString.GetTop and fontString:GetTop()
+    if textTop and frameTop then
+        local reach = textTop - frameTop + TEXT_MARGIN
+        if reach >= 8 and reach <= 80 then return reach end
+    end
+
+    -- The tab frame, for a build where the font string cannot be found.
+    local tabTop = tab:GetTop()
     if tabTop and frameTop then
         local reach = tabTop - frameTop
         if reach >= 8 and reach <= 80 then return reach end
@@ -336,6 +355,76 @@ function Skin:HideStrip(frame)
     for _, tex in pairs(strip) do tex:Hide() end
 end
 
+--- Draw the window box and the strip above it as one shape.
+---
+--- Public because Tabs has to call it: the strip is measured from the tab's
+--- text, and Tabs is what changes that text's size and casing. Skin's handler
+--- runs first, so the measurement it takes at login is of Blizzard's font.
+--- Tabs calls this again once the tab is its own, and the number is right.
+function Skin:RefreshStrip(frame)
+    local cfg = PC.Config
+    if not cfg.enabled then return end
+
+    -- The strip is only drawn when there is somewhere safe to draw it. Without
+    -- a host the window keeps its own top edge and looks like it did before the
+    -- tabs were brought inside: a worse look, but a working one.
+    local host = Skin.StripHost(frame)
+    local strip = host and StripHeight(frame) or 0
+
+    Skin:EnsureBox(frame)
+    Skin:PaintBox(frame, cfg.padding, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
+        cfg.background, cfg.border, strip > 0)
+
+    if host then
+        Skin:EnsureStrip(host)
+        Skin:PaintStrip(host, frame, cfg.padding, strip, cfg.bgColor, cfg.bgAlpha,
+            cfg.borderColor, cfg.background and strip > 0, cfg.border and strip > 0)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Reaching the screen edge
+--
+-- Blizzard gives every chat window a clamping inset, which is why dragging one
+-- to the left of the screen stops short against nothing you can see. Zeroing
+-- the insets lets the window sit against the edge, which is where a lot of
+-- people want it.
+--
+-- Two things this has to respect. SetClampRectInsets is protected in combat, so
+-- the attempt is skipped there rather than throwing - the client reasserts the
+-- insets on its own schedule and the hook below catches the next one. And the
+-- hook calls the widget method captured before the hook was installed, so
+-- re-zeroing from inside the hook does not re-enter it.
+--------------------------------------------------------------------------------
+
+local rawSetClamp = nil
+
+local function ClearClamp(frame)
+    if not PC.Config.enabled or not PC.Config.edgeToEdge then return end
+    if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then return end
+
+    local setter = rawSetClamp or frame.SetClampRectInsets
+    if type(setter) ~= "function" then return end
+    pcall(setter, frame, 0, 0, 0, 0)
+end
+
+local function HookClamp(frame)
+    if frame.__pcClampHooked then return end
+    if type(frame.SetClampRectInsets) ~= "function" then return end
+
+    frame.__pcClampHooked = true
+    rawSetClamp = rawSetClamp or frame.SetClampRectInsets
+
+    -- Remember what the client wanted, so switching the addon off can give it
+    -- back. Wrapped because the getter is not on every build.
+    local ok, left, right, top, bottom = pcall(frame.GetClampRectInsets, frame)
+    if ok and left then frame.__pcClamp = { left, right, top, bottom } end
+
+    hooksecurefunc(frame, "SetClampRectInsets", function(self)
+        ClearClamp(self)
+    end)
+end
+
 --------------------------------------------------------------------------------
 -- Text
 --------------------------------------------------------------------------------
@@ -384,21 +473,10 @@ local function Apply(frame)
         if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(0, 0, 0, 0) end
     end)
 
-    -- The strip is only drawn when there is somewhere safe to draw it. Without
-    -- a host the window keeps its own top edge and looks like it did before the
-    -- tabs were brought inside, which is a worse look but a working one.
-    local host = Skin.StripHost(frame)
-    local strip = host and StripHeight(frame) or 0
+    Skin:RefreshStrip(frame)
 
-    Skin:EnsureBox(frame)
-    Skin:PaintBox(frame, cfg.padding, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
-        cfg.background, cfg.border, strip > 0)
-
-    if host then
-        Skin:EnsureStrip(host)
-        Skin:PaintStrip(host, frame, cfg.padding, strip, cfg.bgColor, cfg.bgAlpha,
-            cfg.borderColor, cfg.background and strip > 0, cfg.border and strip > 0)
-    end
+    HookClamp(frame)
+    ClearClamp(frame)
 
     ApplyFont(frame)
 
@@ -418,6 +496,11 @@ local function Restore(frame)
     Skin:HideBox(frame)
     Skin:HideStrip(frame)
     RestoreFont(frame)
+
+    local clamp = frame.__pcClamp
+    if clamp and rawSetClamp and not (type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()) then
+        pcall(rawSetClamp, frame, clamp[1], clamp[2], clamp[3], clamp[4])
+    end
     Skin.ReviveChrome(frame)
 
     if frame.SetFading then frame:SetFading(true) end

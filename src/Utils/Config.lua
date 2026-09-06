@@ -40,7 +40,11 @@ local PC_DEFAULTS = {
     bgAlpha = 0.60,
     border = true,
     borderColor = { r = 0.176, g = 0.176, b = 0.176 },
-    padding = 4,
+    padding = 6,
+
+    -- Blizzard gives every chat window a clamping inset, which is why dragging
+    -- one to the left of the screen stops short against nothing you can see.
+    edgeToEdge = true,
 
     ----------------------------------------------------------------------------
     -- Text

@@ -140,7 +140,21 @@ function ConfigUI:BuildAppearancePage(parentFrame)
         end,
     })
     padding:SetPoint("TOPLEFT", indent, y)
-    y = y - 62
+    y = y - 56
+
+    local _, afterEdge = Toggle(parentFrame, "Let the window reach the screen edge",
+        "edgeToEdge", y, indent, width, true)
+    y = afterEdge - 4
+
+    local edgeNote = W:CreateLabel(parentFrame,
+        "Blizzard reserves a margin around every chat window, which is why "
+            .. "dragging one to the left of the screen stops short against "
+            .. "nothing you can see. This clears it. The client will not allow "
+            .. "the change during combat, so it takes effect once you are out.",
+        { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
+    edgeNote:SetPoint("TOPLEFT", indent, y)
+    edgeNote:SetWidth(width)
+    y = y - 52
 
     local _, textY = W:CreateSectionHeader(parentFrame, "Text", indent, y)
     y = textY - 8
