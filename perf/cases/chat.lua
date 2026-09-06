@@ -406,6 +406,7 @@ PC.Config = {
     urlBrackets = true,
     copyButton = true,
     copyButtonVisibility = "dim",
+    copyIconSize = 11,
     copyStripColors = true,
     shortChannelNames = true,
     timestamps = "%H:%M ",
@@ -453,11 +454,11 @@ assert(chatFrames[1].peaversBox, "ChatFrame1 was never skinned")
 assert(dock.peaversStrip, "the tab strip background was never drawn on the dock")
 assert(chatTabs[1].peaversUnderline, "the tab was never restyled")
 assert(chatFrames[1].editBox.peaversBox, "the edit box was never skinned")
-assert(chatFrames[1].peaversCopyButton, "the copy button was never built")
+assert(dock.peaversCopyButton, "the copy button was never built on the strip host")
 assert(chatFrames[1].__pcAddMessage, "the URL hook was never installed on ChatFrame1")
 assert(_G.CHAT_GUILD_GET:find("%[G%]"), "channel names were not abbreviated")
 assert(_G.ChatFrameMenuButton:IsShown() == false, "the menu button is still on screen")
-assert(chatFrames[1].peaversCopyButton:IsShown(), "the copy button is hidden")
+assert(dock.peaversCopyButton:IsShown(), "the copy button is hidden")
 
 --------------------------------------------------------------------------------
 -- A chat message

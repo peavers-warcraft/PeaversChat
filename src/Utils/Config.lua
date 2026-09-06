@@ -145,6 +145,7 @@ local PC_DEFAULTS = {
     -- suite holds to: no click target you cannot see. "hover" is the exception,
     -- for anybody who would rather have nothing there at all.
     copyButtonVisibility = "dim",   -- "dim" | "always" | "hover"
+    copyIconSize = 11,
 
     ----------------------------------------------------------------------------
     -- Channels

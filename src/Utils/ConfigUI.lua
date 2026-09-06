@@ -571,6 +571,19 @@ function ConfigUI:BuildLinksPage(parentFrame)
     visibility:SetPoint("TOPLEFT", indent, y)
     y = y - 58
 
+    local iconSize = W:CreateSlider(parentFrame, "Copy icon size", {
+        min = 8, max = 20, step = 1,
+        value = PC.Config.copyIconSize or 11,
+        width = width,
+        format = function(v) return string.format("%dpx", v) end,
+        onChange = function(value)
+            PC.Config.copyIconSize = value
+            Apply()
+        end,
+    })
+    iconSize:SetPoint("TOPLEFT", indent, y)
+    y = y - 56
+
     local _, afterStrip = Toggle(parentFrame, "Strip colours and icons out of copied text",
         "copyStripColors", y, indent, width, true)
     y = afterStrip - 4

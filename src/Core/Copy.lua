@@ -285,10 +285,15 @@ end
 -- button's, because moving the pointer onto a child fires the parent's OnLeave.
 --------------------------------------------------------------------------------
 
-local ICON_SIZE = 14
+--- Size is a setting because "a bit smaller" is a matter of taste and a slider
+--- is cheaper than another round of guessing.
+local function IconSize()
+    return PC.Config.copyIconSize or 11
+end
 
+--- Four textures that never change; only their size and colour do, so changing
+--- the slider re-lays them out rather than rebuilding them.
 local function CopyGlyph(button)
-    local square = 9
     local parts = {}
 
     for index = 1, 2 do
@@ -296,23 +301,29 @@ local function CopyGlyph(button)
         -- they overlap; the punched-out inner sits a sublevel above its own
         -- outer.
         local layer = (index == 1) and "ARTWORK" or "OVERLAY"
-        local outer = button:CreateTexture(nil, layer, nil, 0)
-        local inner = button:CreateTexture(nil, layer, nil, 1)
-
-        outer:SetSize(square, square)
-        inner:SetSize(square - 2, square - 2)
-
-        if index == 1 then
-            outer:SetPoint("BOTTOMLEFT")
-        else
-            outer:SetPoint("TOPRIGHT")
-        end
-        inner:SetPoint("CENTER", outer, "CENTER")
-
-        parts[#parts + 1] = { outer = outer, inner = inner }
+        parts[index] = {
+            outer = button:CreateTexture(nil, layer, nil, 0),
+            inner = button:CreateTexture(nil, layer, nil, 1),
+        }
     end
 
     return parts
+end
+
+local function SizeGlyph(button, size)
+    -- The two squares each take all but the offset, and the offset is what
+    -- makes it read as one sheet behind another.
+    local square = math.max(5, size - 4)
+
+    for index, part in ipairs(button.glyph) do
+        part.outer:SetSize(square, square)
+        part.inner:SetSize(square - 2, square - 2)
+
+        part.outer:ClearAllPoints()
+        part.outer:SetPoint(index == 1 and "BOTTOMLEFT" or "TOPRIGHT")
+        part.inner:ClearAllPoints()
+        part.inner:SetPoint("CENTER", part.outer, "CENTER")
+    end
 end
 
 local function PaintGlyph(button, bright)
@@ -329,8 +340,7 @@ end
 
 --- Alpha for the current setting and hover state. Kept in one place because
 --- three scripts and a settings change all need to agree on it.
-local function ApplyVisibility(frame)
-    local button = frame.peaversCopyButton
+local function ApplyVisibility(button)
     if not button then return end
 
     local cfg = PC.Config
@@ -338,7 +348,7 @@ local function ApplyVisibility(frame)
     button:SetShown(shown and true or false)
     if not shown then return end
 
-    local hovered = frame.__pcHovered and true or false
+    local hovered = button.__pcHovered and true or false
     local mode = cfg.copyButtonVisibility or "dim"
 
     if mode == "always" then
@@ -352,30 +362,32 @@ local function ApplyVisibility(frame)
     PaintGlyph(button, hovered)
 end
 
-local function SetHovered(frame, hovered)
-    frame.__pcHovered = hovered or nil
-    ApplyVisibility(frame)
+local function SetHovered(button, hovered)
+    if not button then return end
+    button.__pcHovered = hovered or nil
+    ApplyVisibility(button)
 end
 
-local function HookHover(frame)
+local function HookHover(frame, host)
     if frame.__pcHoverHooked then return end
     if type(frame.HookScript) ~= "function" then return end
 
     frame.__pcHoverHooked = true
-    frame:HookScript("OnEnter", function(self) SetHovered(self, true) end)
-    frame:HookScript("OnLeave", function(self) SetHovered(self, false) end)
+    frame:HookScript("OnEnter", function() SetHovered(host.peaversCopyButton, true) end)
+    frame:HookScript("OnLeave", function() SetHovered(host.peaversCopyButton, false) end)
 end
 
-local function BuildButton(frame)
-    local button = CreateFrame("Button", nil, frame)
-    button:SetSize(ICON_SIZE, ICON_SIZE)
+local function BuildButton(host)
+    local button = CreateFrame("Button", nil, host)
     button.glyph = CopyGlyph(button)
 
-    button:SetScript("OnClick", function() Copy:ShowChat(frame) end)
+    -- No argument: whichever window is on top is the one to copy, which for a
+    -- shared tab strip is the only sensible reading of the button.
+    button:SetScript("OnClick", function() Copy:ShowChat() end)
 
     -- The mark carries no label, so it has to say what it is on hover.
     button:SetScript("OnEnter", function(self)
-        SetHovered(frame, true)
+        SetHovered(self, true)
         local tooltip = _G.GameTooltip
         if not tooltip then return end
         tooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -385,38 +397,74 @@ local function BuildButton(frame)
         tooltip:Show()
     end)
 
-    button:SetScript("OnLeave", function()
-        SetHovered(frame, false)
+    button:SetScript("OnLeave", function(self)
+        SetHovered(self, false)
         if _G.GameTooltip then _G.GameTooltip:Hide() end
     end)
 
-    frame.peaversCopyButton = button
+    host.peaversCopyButton = button
     return button
+end
+
+--- Vertical placement, in frame coordinates above the chat frame's top edge:
+--- the middle of the tab's text, so the mark sits on the same line as the words
+--- rather than floating in the band around them. Falls back to the middle of
+--- the strip when the text has not been laid out yet, which at login it has not.
+local function InlineOffset(frame, size)
+    local tab = PC.Frames:TabFor(frame)
+    local fontString = tab and PC.Tabs and PC.Tabs.FontString and PC.Tabs.FontString(tab)
+
+    local frameTop = frame:GetTop()
+    local textTop = fontString and fontString.GetTop and fontString:GetTop()
+    local textBottom = fontString and fontString.GetBottom and fontString:GetBottom()
+
+    if frameTop and textTop and textBottom then
+        local middle = ((textTop + textBottom) / 2) - frameTop
+        if middle > 0 and middle < 80 then
+            return middle + (size / 2)
+        end
+    end
+
+    local strip = PC.Skin.StripHeight(frame) or 0
+    return (strip / 2) + (size / 2)
 end
 
 local function Apply(frame)
     local cfg = PC.Config
 
-    if not frame.peaversCopyButton then
+    -- Parented to whatever the strip is drawn on, not to the chat frame. The
+    -- mark now sits in the tab band, and the band's background is a texture on
+    -- the dock: a child of the chat frame would be ordered against that texture
+    -- by strata, which is the guess that made the tabs disappear once already.
+    -- A child of the dock is above the dock's own regions by definition.
+    --
+    -- One dock means one mark, shared by every window docked in it, which is
+    -- also the only sensible reading of a button in a shared tab strip: it
+    -- copies whichever window is on top.
+    local host = PC.Skin.StripHost(frame) or frame
+
+    local button = host.peaversCopyButton
+    if not button then
         if not cfg.enabled or not cfg.copyButton then return end
-        BuildButton(frame)
+        button = BuildButton(host)
     end
 
-    HookHover(frame)
+    HookHover(frame, host)
 
-    local button = frame.peaversCopyButton
-    button:ClearAllPoints()
-    -- Tucked inside the window's own right and top insets, so it moves with
-    -- the padding rather than sitting on the border at one setting and over the
-    -- text at another.
+    local size = IconSize()
+    button:SetSize(size, size)
+    SizeGlyph(button, size)
+
     local pad = PC.Skin.Pad()
-    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(pad.right + 2), -(pad.top + 2))
+    button:ClearAllPoints()
+    button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(pad.right + 2), InlineOffset(frame, size))
 
-    ApplyVisibility(frame)
+    ApplyVisibility(button)
 end
 
 local function Restore(frame)
-    if frame.peaversCopyButton then frame.peaversCopyButton:Hide() end
+    local host = PC.Skin.StripHost(frame) or frame
+    if host.peaversCopyButton then host.peaversCopyButton:Hide() end
 end
 
 function Copy:Initialize()
