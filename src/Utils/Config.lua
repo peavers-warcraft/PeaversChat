@@ -135,6 +135,12 @@ local PC_DEFAULTS = {
     urlColor = { r = 0.506, g = 0.549, b = 0.973 },
     urlBrackets = true,
 
+    -- Off, and a workaround rather than a preference. Altering chat messages
+    -- inside a dungeon has twice stopped chat working there, from two different
+    -- insertion points, while being fine everywhere else. Until that is
+    -- explained, the message path in instanced content is left alone.
+    urlLinksInInstances = false,
+
     ----------------------------------------------------------------------------
     -- Copy
     ----------------------------------------------------------------------------

@@ -270,6 +270,7 @@ _G.hooksecurefunc = function(name, fn)
 end
 
 _G.PixelUtil = { GetNearestPixelSize = function() return 1 end }
+_G.IsInInstance = function() return false, "none" end
 _G.STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 _G.ChatFontNormal = {}
 _G.SetCVar = function() Count("SetCVar") end
@@ -404,6 +405,7 @@ PC.Config = {
     urlLinks = true,
     urlColor = { r = 0.506, g = 0.549, b = 0.973 },
     urlBrackets = true,
+    urlLinksInInstances = true,
     copyButton = true,
     copyButtonVisibility = "dim",
     copyIconSize = 11,

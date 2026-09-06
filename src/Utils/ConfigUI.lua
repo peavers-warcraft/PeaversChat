@@ -540,10 +540,19 @@ function ConfigUI:BuildLinksPage(parentFrame)
     urlPicker:SetPoint("TOPLEFT", indent, y)
     y = y - 40
 
+    local _, afterInstances = Toggle(parentFrame, "Also link them inside dungeons and raids",
+        "urlLinksInInstances", y, indent, width, false)
+    y = afterInstances - 4
+
     local linkNote = W:CreateLabel(parentFrame,
         "Clicking one opens the copy window with the address selected: an addon " ..
             "cannot open a browser, so click, Ctrl+C, Escape is as close as the " ..
-            "game gets.",
+            "game gets. Inside a dungeon, raid, arena or battleground the " ..
+            "addon stops touching chat messages entirely. Altering them there " ..
+            "has twice stopped chat working, from two different places in the " ..
+            "code, while being fine everywhere else. Until that is explained " ..
+            "the message path in instances is left alone - turn the box above " ..
+            "on only if you want to test whether it has been fixed.",
         { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
     linkNote:SetPoint("TOPLEFT", indent, y)
     linkNote:SetWidth(width)

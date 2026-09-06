@@ -86,6 +86,13 @@ function Diagnostics:Start()
     lastSeen = nil
     startedAt = GetTime()
 
+    -- Ask the URL hook to count the lines that reach it. The gap between that
+    -- and the events counted here is the whole diagnosis: events with no passes
+    -- means the client stopped before AddMessage and nothing in this addon can
+    -- be responsible.
+    PC.Links.passes = 0
+    PC.Links.counting = true
+
     for i = 1, #WATCHED do
         pcall(watcher.RegisterEvent, watcher, WATCHED[i])
     end
@@ -100,6 +107,7 @@ function Diagnostics:Stop()
         watcher:UnregisterAllEvents()
         watcher:Hide()
     end
+    PC.Links.counting = nil
     print("|cff3abdf7PeaversChat|r: stopped watching chat events.")
 end
 
@@ -154,7 +162,11 @@ function Diagnostics:Report()
         print(("  last: %s  %s"):format(lastSeen.event, Literal(lastSeen.text)))
     end
 
-    print(("  PeaversChat URL filter: %s"):format(
+    print(("  lines that reached our AddMessage hook: %d"):format(PC.Links.passes or 0))
+    print(("  in a restricted instance right now: %s"):format(
+        PC.Links.InRestrictedInstance and tostring(PC.Links.InRestrictedInstance()) or "unknown"))
+
+    print(("  PeaversChat URL hook: %s"):format(
         PC.Links:IsInstalled() and "installed"
         or (PC.Links:HasSurrendered() and "removed after repeated errors" or "not installed")))
 

@@ -239,6 +239,12 @@ local function HookFrame(frame)
     frame.__pcAddMessage = original
 
     local wrapper = function(self, text, ...)
+        -- Counted for /pchat trace, which needs to know whether a line reached
+        -- this hook at all: an event that arrives and never gets here means the
+        -- client stopped before AddMessage, and nothing in this file can be to
+        -- blame for it. One integer, and only while tracing.
+        if Links.counting then Links.passes = (Links.passes or 0) + 1 end
+
         if active and type(text) == "string" then
             local ok, rewritten = pcall(Rewrite, text)
             if not ok then
@@ -327,8 +333,41 @@ end
 
 --- Match the hooks to the current settings. Idempotent; called on every config
 --- change and every time a chat window is adopted.
+--------------------------------------------------------------------------------
+-- Instanced content
+--
+-- Twice now, altering chat messages has stopped chat working inside a dungeon
+-- while leaving it fine everywhere else - first from a message event filter,
+-- then from this AddMessage hook, which is a different insertion point in the
+-- same path. Two different mechanisms failing the same way in the same place is
+-- not a bug in either of them. It says an addon has no business in the message
+-- path there at all, whatever door it came in by.
+--
+-- So the hook comes out on the way into a dungeon, raid, arena or battleground
+-- and goes back in on the way out. URLs stay clickable everywhere they have
+-- ever worked; the place they did not is the place chat now goes untouched.
+--
+-- The setting exists because this is a workaround for behaviour nobody has
+-- explained yet. If a future patch makes it safe, it is one checkbox rather
+-- than a new build.
+--------------------------------------------------------------------------------
+
+local function InRestrictedInstance()
+    if type(_G.IsInInstance) ~= "function" then return false end
+
+    local ok, inInstance, kind = pcall(_G.IsInInstance)
+    if not ok or not inInstance then return false end
+
+    return kind == "party" or kind == "raid" or kind == "arena" or kind == "pvp"
+end
+
+Links.InRestrictedInstance = InRestrictedInstance
+
 function Links:Sync()
-    active = (PC.Config.enabled and PC.Config.urlLinks and not surrendered) and true or false
+    local allowedHere = PC.Config.urlLinksInInstances or not InRestrictedInstance()
+
+    active = (PC.Config.enabled and PC.Config.urlLinks and allowedHere and not surrendered)
+        and true or false
 
     Frames:Each(function(frame)
         if active then HookFrame(frame) else UnhookFrame(frame) end
@@ -340,6 +379,13 @@ function Links:Initialize()
 
     -- After the handler, so Sync sees the windows it has just been given.
     self:Refresh()
+
+    -- The hook has to come out before the first message arrives in a dungeon
+    -- and go back in on the way out, so both ends of the zone change matter.
+    local Events = _G.PeaversCommons.Events
+    for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }) do
+        Events:RegisterEvent(event, function() Links:Sync() end)
+    end
 
     -- Clicking the link. The client routes every hyperlink in a chat frame
     -- through SetItemRef, including types it has never heard of, which is what
