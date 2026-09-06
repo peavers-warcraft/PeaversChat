@@ -58,8 +58,31 @@ local PC_DEFAULTS = {
     -- Blizzard gives every chat window a clamping inset, which is why dragging
     -- one to the left of the screen stops short against nothing you can see.
     -- Cleared once per window, out of combat, and never hooked.
+    -- NOTE: this lets you drag the window to the edge. It does not move it.
+    -- Moving is positionEnabled, below - the two get confused constantly, and
+    -- somebody who switches this on and waits for the window to travel is
+    -- waiting for a feature that lives a few lines further down.
     edgeToEdge = true,
     edgeToEdgeWithdrawn = false,
+
+    ----------------------------------------------------------------------------
+    -- Where the window sits
+    --
+    -- Off by default. A chat window is the piece of the interface people have
+    -- most often already arranged to their own taste, and an addon that moves it
+    -- on upgrade because it now can has taken something away. Switched on from
+    -- the settings page, or by a UI pack layout chosen on purpose.
+    --
+    -- Only the dock leader is placed; docked windows follow it.
+    ----------------------------------------------------------------------------
+    positionEnabled = false,
+    chatPoint = "BOTTOMLEFT",
+    chatX = 0,
+    chatY = 22,
+    -- 0 means "leave the size alone", which is what somebody who wants the
+    -- window moved but not resized is asking for.
+    chatWidth = 0,
+    chatHeight = 0,
 
     ----------------------------------------------------------------------------
     -- Text

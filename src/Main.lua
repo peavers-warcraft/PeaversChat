@@ -106,6 +106,35 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
     copy = function()
         PC.Copy:ShowChat()
     end,
+    move = function(rest)
+        local arg = tostring(rest or ""):trim():lower()
+        local cfg = PC.Config
+
+        if arg == "off" then
+            cfg.positionEnabled = false
+            cfg:Save()
+            Utils.Print(PC, "Chat position released - the window stays where it is.")
+            return
+        end
+
+        -- No argument: take the window where it already is. Dragging it into
+        -- place and pressing a button beats guessing at coordinates.
+        if arg == "" or arg == "here" then
+            if not PC.Position:CaptureCurrent() then
+                Utils.Print(PC, "Could not read the chat window position.")
+                return
+            end
+            cfg.positionEnabled = true
+            cfg:Save()
+            PC.Position:Apply()
+            Utils.Print(PC, string.format(
+                "Chat pinned at %s %d, %d (%dx%d). /pchat move off releases it.",
+                cfg.chatPoint, cfg.chatX, cfg.chatY, cfg.chatWidth, cfg.chatHeight))
+            return
+        end
+
+        Utils.Print(PC, "Usage: /pchat move (pin it where it is) or /pchat move off")
+    end,
     without = function(rest)
         -- Bisecting from the other end: everything on, then one group taken
         -- away at a time, cumulatively. Removals stack, so "without buttons"
@@ -343,6 +372,8 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat trace - Count chat events as they arrive, then report")
         print("  /pchat style - Show where the window background is drawn")
         print("  /pchat enable - Skin the chat windows")
+        print("  /pchat move - Pin the chat window where it is now")
+        print("  /pchat move off - Stop managing its position")
         print("  /pchat disable - Hand chat back to Blizzard")
         print("  /pchat defaults - Put every PeaversChat setting back to its default")
         print("  /pchat reset - Reset the chat layout, then reskin it")
@@ -408,6 +439,10 @@ PeaversCommons.Events:Init(addonName, function()
     PC.EditBox:Initialize()
     PC.Buttons:Initialize()
     PC.Copy:Initialize()
+    -- Registers a Frames handler, so it must come before Frames:Initialize()
+    -- adopts the windows - registration replays over anything already adopted,
+    -- but going first keeps the ordering honest rather than accidental.
+    PC.Position:Initialize()
 
     PC.Frames:Initialize()
     PC.Channels:Initialize()

@@ -204,6 +204,73 @@ function ConfigUI:BuildAppearancePage(parentFrame)
     edgeNote:SetWidth(width)
     y = y - 52
 
+    ----------------------------------------------------------------------------
+    -- Position
+    --
+    -- Deliberately a button rather than four coordinate boxes. Nobody knows
+    -- what BOTTOMLEFT 0, 22 looks like, and everybody can drag a window; this
+    -- reads the position back off the window you have already arranged.
+    ----------------------------------------------------------------------------
+    local _, posY = W:CreateSectionHeader(parentFrame, "Position", indent, y)
+    y = posY - 8
+
+    local posNote = W:CreateLabel(parentFrame,
+        "Separate from the setting above: that one lets you drag the window to "
+            .. "the edge, this one decides where it sits. Off means the window "
+            .. "is yours to move, which is how it has always been.",
+        { font = "GameFontNormalSmall", color = { 0.5, 0.5, 0.5 } })
+    posNote:SetPoint("TOPLEFT", indent, y)
+    posNote:SetWidth(width)
+    y = y - 40
+
+    local posState = W:CreateLabel(parentFrame, "", { font = "GameFontNormalSmall" })
+
+    local function DescribePosition()
+        if not PC.Config.positionEnabled then
+            posState:SetText("Not managed - drag the window wherever you like.")
+            posState:SetTextColor(0.5, 0.5, 0.5)
+            return
+        end
+
+        local size = ""
+        if (PC.Config.chatWidth or 0) > 0 and (PC.Config.chatHeight or 0) > 0 then
+            size = string.format("  %dx%d", PC.Config.chatWidth, PC.Config.chatHeight)
+        end
+        posState:SetText(string.format("Pinned at %s  %d, %d%s",
+            PC.Config.chatPoint or "BOTTOMLEFT",
+            PC.Config.chatX or 0, PC.Config.chatY or 0, size))
+        posState:SetTextColor(unpack(W.Colors.accent))
+    end
+
+    local pin = W:CreateButton(parentFrame, "Pin it where it is now", {
+        variant = "secondary",
+        width = 190,
+        onClick = function()
+            if not PC.Position:CaptureCurrent() then return end
+            PC.Config.positionEnabled = true
+            Apply()
+            PC.Position:Apply()
+            DescribePosition()
+        end,
+    })
+    pin:SetPoint("TOPLEFT", indent, y)
+
+    local release = W:CreateButton(parentFrame, "Release", {
+        variant = "ghost",
+        width = 90,
+        onClick = function()
+            PC.Config.positionEnabled = false
+            Apply()
+            DescribePosition()
+        end,
+    })
+    release:SetPoint("TOPLEFT", indent + 198, y)
+    y = y - 32
+
+    posState:SetPoint("TOPLEFT", indent, y)
+    DescribePosition()
+    y = y - 26
+
     local _, textY = W:CreateSectionHeader(parentFrame, "Text", indent, y)
     y = textY - 8
 

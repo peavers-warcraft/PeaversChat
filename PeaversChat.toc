@@ -20,6 +20,7 @@ src\Utils\Config.lua
 src\Utils\Patrons.lua
 
 src\Core\Frames.lua
+src\Core\Position.lua
 src\Core\Skin.lua
 src\Core\Tabs.lua
 src\Core\EditBox.lua
