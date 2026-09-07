@@ -464,6 +464,11 @@ PeaversCommons.Events:Init(addonName, function()
     PC.Position:Initialize()
 
     PC.Frames:Initialize()
+
+    -- After Frames, whose state the settings drive.
+    if PC.EditMode then
+        PC.EditMode:Register()
+    end
     PC.Channels:Initialize()
 
     -- The hooks go on only when the addon is on. hooksecurefunc cannot be
