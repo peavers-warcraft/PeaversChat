@@ -33,7 +33,7 @@ the build fails.
 
 | Check | Measured | Budget | |
 |---|---:|---:|:--:|
-| Packaged size | 192.3 KB | 208 KB | pass |
+| Packaged size | 185.1 KB | 208 KB | pass |
 | Bundled libraries | 0 | 0 | pass |
 | Widget calls per frame | 0 | 0 | pass |
 | Widget calls per second while idle | 0 | 0 | pass |
@@ -49,7 +49,7 @@ Scenarios driven against the real addon source, outside the game:
 | told to re-apply, 1/sec | 0.00 | 24.0 | 24.0 calls to re-apply the skin to every window when nothing has changed |
 | idle, chat on screen | 0.00 | - | 0 OnUpdate handlers installed anywhere in the addon |
 
-<sub>4,932 lines of Lua · 192.3 KB packaged · no bundled libraries</sub>
+<sub>4,698 lines of Lua · 185.1 KB packaged · no bundled libraries</sub>
 
 <!-- perf:end -->
 
