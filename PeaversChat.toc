@@ -32,5 +32,6 @@ src\Core\Channels.lua
 src\Core\Diagnostics.lua
 
 src\Utils\ConfigUI.lua
+src\Utils\EditMode.lua
 
 src\Main.lua
