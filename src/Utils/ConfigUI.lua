@@ -9,12 +9,14 @@ if not PeaversCommons then
     return
 end
 
+local ConfigUIUtils = PeaversCommons.ConfigUIUtils
+
 -- Applying a setting lives with the addon's schema now, in EditMode.lua, so the
 -- settings page and the Edit Mode panel cannot disagree about what a change
 -- should do.
 
 function ConfigUI:BuildInfoPage(parentFrame)
-    PeaversCommons.ConfigUIUtils.BuildInfoPage(parentFrame, "Chat", {
+    ConfigUIUtils.BuildInfoPageWithEditMode(parentFrame, "Chat", {
         "Redraws the chat window as a flat black box with clean text tabs, turns " ..
             "URLs into something you can click, puts a copy button where you can " ..
             "see it, and hides every piece of chrome Blizzard hangs around the " ..
@@ -23,11 +25,6 @@ function ConfigUI:BuildInfoPage(parentFrame)
         { command = "/pchat copy", desc = "copy the chat window on top" },
         { command = "/pchat buttons", desc = "show or hide every button at once" },
         { command = "/pchat disable", desc = "hand chat back to Blizzard" },
-
-        { header = "Settings are in Edit Mode" },
-        "Open Edit Mode from the game menu and select the chat frame. Everything " ..
-            "is there: the background and border, padding, text and tabs, the " ..
-            "edit box, which buttons to show, and the link and copy settings.",
 
         { header = "Clickable URLs" },
         "The hard part is not finding URLs, it is not finding things that are " ..
@@ -58,6 +55,16 @@ function ConfigUI:BuildInfoPage(parentFrame)
             "going to show them anyway; and a chat message costs one plain " ..
             "string search, which bails before doing any pattern work unless the " ..
             "message contains a dot or an at-sign.",
+    }, {
+        title = "the chat frame",
+        select = "the chat frame",
+        reset = function()
+            PC.Config:Reset()
+            if PC.ApplySetting then PC.ApplySetting() end
+            if PeaversCommons.EditModePanel then
+                PeaversCommons.EditModePanel:Refresh()
+            end
+        end,
     })
 end
 
