@@ -297,8 +297,13 @@ local function InstallHooks(frame)
 end
 
 local function Build(frame)
+    -- Read once and counted from, rather than asked again for the thumb: the
+    -- level of a frame that has just been given one is a question with a known
+    -- answer, and asking it is a client call.
+    local level = (frame:GetFrameLevel() or 1) + 4
+
     local bar = CreateFrame("Frame", nil, frame)
-    bar:SetFrameLevel((frame:GetFrameLevel() or 1) + 4)
+    bar:SetFrameLevel(level)
     bar:EnableMouse(true)
     bar:EnableMouseWheel(true)
     bar:Hide()
@@ -310,7 +315,7 @@ local function Build(frame)
     bar.track.__pcOwned = true
 
     local thumb = CreateFrame("Frame", nil, bar)
-    thumb:SetFrameLevel(bar:GetFrameLevel() + 1)
+    thumb:SetFrameLevel(level + 1)
     thumb:EnableMouse(true)
     thumb:SetHeight(MIN_THUMB)
     thumb.__pcBar = bar
