@@ -16,10 +16,14 @@
 --
 --   * A chat message costs *zero* client calls. The URL filter is pure string
 --     work with a plain-substring bail at the front; it never touches a widget.
---   * Nothing runs per frame. There is no OnUpdate anywhere in the addon, which
---     is the kind of negative claim that rots quietly, so it is hunted for
---     rather than asserted: every frame the addon created is searched for a
---     handler and ticked for a simulated second.
+--   * Nothing runs per frame. There is no OnUpdate installed anywhere in the
+--     addon, which is the kind of negative claim that rots quietly, so it is
+--     hunted for rather than asserted: every frame the addon created is
+--     searched for a handler and ticked for a simulated second. The scroll bar
+--     attaches one for the duration of a thumb drag and takes it off again on
+--     mouse-up, which is why a drag is not simulated here: what is under test
+--     is what the addon costs while you are playing, not while you are holding
+--     a mouse button down on it.
 --   * The recurring frame-path cost is switching tabs, and it is bounded.
 --
 -- The one-off cost of skinning the windows at login is reported in the notes
@@ -228,6 +232,21 @@ local function NewChatFrame(index, windowName)
     frame.GetNumMessages = function() return #MESSAGES end
     frame.GetMessageInfo = function(_, i) return MESSAGES[((i - 1) % #MESSAGES) + 1] end
 
+    -- The scroll position, as a ScrollingMessageFrame keeps it: lines up from
+    -- the bottom, zero at the newest message. Counted, because reading it is a
+    -- client call the scroll bar makes and has to be charged for.
+    frame._scrollOffset = 0
+    frame.GetScrollOffset = function(self) Count("GetScrollOffset") return self._scrollOffset end
+    frame.SetScrollOffset = function(self, offset)
+        Count("SetScrollOffset")
+        self._scrollOffset = offset
+    end
+    frame.GetNumLinesDisplayed = function() Count("GetNumLinesDisplayed") return 3 end
+    for _, method in ipairs({ "ScrollUp", "ScrollDown", "PageUp", "PageDown",
+                              "ScrollToTop", "ScrollToBottom" }) do
+        frame[method] = function() Count(method) end
+    end
+
     -- Parented to the dock, as the client parents a docked tab. That is what
     -- StripHost looks for, and the strip is drawn on whatever it finds.
     local tab = NewFrame("ChatFrame" .. index .. "Tab", index, _G.GeneralDockManager)
@@ -263,9 +282,15 @@ end
 -- The rest of the client
 --------------------------------------------------------------------------------
 
-_G.hooksecurefunc = function(name, fn)
-    local original = _G[name]
-    _G[name] = function(...)
+-- Both forms. The global-name form is what most of the addon uses; the scroll
+-- bar hooks methods on a chat frame it did not create, which is the three
+-- argument form and is a different code path in the client.
+_G.hooksecurefunc = function(a, b, c)
+    local owner, name, fn = _G, a, b
+    if type(a) == "table" then owner, name, fn = a, b, c end
+
+    local original = owner[name]
+    owner[name] = function(...)
         original(...)
         fn(...)
     end
@@ -426,6 +451,12 @@ PC.Config = {
     copyButtonVisibility = "dim",
     copyIconSize = 11,
     copyStripColors = true,
+    -- Always-on rather than the shipped hover default: a budget written against
+    -- the setting that draws nothing is not a budget.
+    scrollBar = true,
+    scrollBarVisibility = "always",
+    scrollBarWidth = 4,
+    scrollBarColor = { r = 0.400, g = 0.400, b = 0.400 },
     shortChannelNames = true,
     shortChannelNamesWithdrawn = true,
     timestamps = "%H:%M ",
@@ -442,6 +473,7 @@ Load("Core/Skin.lua")
 Load("Core/Tabs.lua")
 Load("Core/EditBox.lua")
 Load("Core/Buttons.lua")
+Load("Core/ScrollBar.lua")
 Load("Core/Links.lua")
 Load("Core/Copy.lua")
 Load("Core/Channels.lua")
@@ -460,6 +492,7 @@ PC.Skin:Initialize()
 PC.Tabs:Initialize()
 PC.EditBox:Initialize()
 PC.Buttons:Initialize()
+PC.ScrollBar:Initialize()
 PC.Links:Initialize()
 PC.Copy:Initialize()
 
@@ -485,6 +518,9 @@ assert(PC.Links:IsInstalled(), "the URL filter was never installed")
 assert(_G.CHAT_GUILD_GET:find("%[G%]"), "channel names were not abbreviated")
 assert(_G.ChatFrameMenuButton:IsShown() == false, "the menu button is still on screen")
 assert(dock.peaversCopyButton:IsShown(), "the copy button is hidden")
+assert(chatFrames[1].peaversScrollBar, "the scroll bar was never built")
+assert(chatFrames[1].peaversScrollBar:IsShown(), "the scroll bar is hidden while set to always")
+assert(chatFrames[1].__pcScrollHooked, "the scroll bar never hooked the client's scroll functions")
 
 --------------------------------------------------------------------------------
 -- Switching tabs

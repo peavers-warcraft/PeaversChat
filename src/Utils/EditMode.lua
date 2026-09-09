@@ -47,6 +47,7 @@ EditMode.SECTIONS = {
     { key = "tabs", label = "Tabs" },
     { key = "editbox", label = "Edit Box" },
     { key = "buttons", label = "Buttons" },
+    { key = "scrollbar", label = "Scroll Bar" },
     { key = "links", label = "Links And Copy" },
 }
 
@@ -293,6 +294,37 @@ EditMode.ENTRIES = {
     },
     { key = "showVoiceButtons", label = "Voice Buttons", kind = "checkbox", section = "buttons", default = false },
     { key = "showCombatLogBar", label = "Combat Log Filter Bar", kind = "checkbox", section = "buttons", default = false },
+
+    ------------------------------------------------------------- scrollbar ---
+    -- Off by default, and the rest of the group only appears once it is on.
+    {
+        key = "scrollBar", label = "Show A Scroll Bar", kind = "checkbox",
+        section = "scrollbar", default = false, revealsOthers = true,
+        desc = "A thin flat bar down the right edge of the window, drawn in the "
+            .. "window's own colours rather than Blizzard's.",
+    },
+    {
+        key = "scrollBarVisibility", label = "Scroll Bar Shows", kind = "dropdown",
+        section = "scrollbar", fallback = "hover",
+        hidden = function(cfg) return not cfg.scrollBar end,
+        values = {
+            { value = "hover", label = "Only while hovered" },
+            { value = "dim", label = "Dimmed until hovered" },
+            { value = "always", label = "Always" },
+        },
+    },
+    {
+        key = "scrollBarWidth", label = "Scroll Bar Width", kind = "slider",
+        section = "scrollbar", min = 2, max = 12, step = 1, unit = "px", default = 4,
+        hidden = function(cfg) return not cfg.scrollBar end,
+    },
+    {
+        key = "scrollBarColor", label = "Scroll Bar Colour", kind = "color",
+        section = "scrollbar", default = { r = 0.400, g = 0.400, b = 0.400 },
+        hidden = function(cfg) return not cfg.scrollBar end,
+        desc = "The thumb takes this colour; the track behind it is the same "
+            .. "colour, faint.",
+    },
 
     ----------------------------------------------------------------- links ---
     {

@@ -154,6 +154,23 @@ local PC_DEFAULTS = {
     showCombatLogBar = false,   -- Blizzard_CombatLog's gold quick-filter strip
 
     ----------------------------------------------------------------------------
+    -- Scroll bar
+    --
+    -- Off. Blizzard's own scrollbar is hidden with the rest of the chrome above,
+    -- and this draws a flat one in the window's colours instead - but a chat
+    -- window that has never had a scrollbar should not grow one because the
+    -- addon updated. Switched on from the settings page by anybody who wants it.
+    --
+    -- Hover is the default once it is on, and is the one setting in this block
+    -- that hides a control. In the other two the bar is on screen and clickable
+    -- at all times.
+    ----------------------------------------------------------------------------
+    scrollBar = false,
+    scrollBarVisibility = "hover",  -- "hover" | "dim" | "always"
+    scrollBarWidth = 4,
+    scrollBarColor = { r = 0.400, g = 0.400, b = 0.400 },
+
+    ----------------------------------------------------------------------------
     -- Links
     ----------------------------------------------------------------------------
     urlLinks = true,

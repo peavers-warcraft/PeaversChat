@@ -40,6 +40,15 @@ function ConfigUI:BuildInfoPage(parentFrame)
             "own message buffer and already selected. Colours, icons and link " ..
             "wrappers are taken back out; what a link was standing in for stays.",
 
+        { header = "The scroll bar" },
+        "Off by default, and hover-only when it is on. Blizzard's own scrollbar " ..
+            "is hidden with the rest of the chrome, so this draws a flat one in " ..
+            "the window's colours instead: a faint track down the right edge " ..
+            "with a thumb whose height is how much of the backlog is on screen. " ..
+            "Drag it, click the track to page, or use the wheel over it. " ..
+            "\"Dimmed\" and \"Always\" keep it on screen as a visible control " ..
+            "for anybody who would rather not hunt for it.",
+
         { header = "What it deliberately does not do" },
         "It does not take over how a chat line is built. Numbered channels keep " ..
             "Blizzard's naming, class colouring stays the client's own, and no " ..
@@ -49,7 +58,8 @@ function ConfigUI:BuildInfoPage(parentFrame)
             "worth the outage.",
 
         { header = "Performance" },
-        "Nothing here runs per frame and nothing runs on a timer. The skin is " ..
+        "Nothing here runs per frame and nothing runs on a timer, bar the " ..
+            "moment you are dragging the scroll bar's thumb. The skin is " ..
             "built once per window and afterwards only recoloured; hidden " ..
             "buttons cost one OnShow handler that fires when the client was " ..
             "going to show them anyway; and a chat message costs one plain " ..
