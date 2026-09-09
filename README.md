@@ -57,7 +57,7 @@ The zeroes are the point, so they are worth explaining:
 
 - **A chat message costs nothing.** The URL matcher is pure string work, and it bails on a plain substring search before any pattern matching unless the line contains a dot or an at-sign. It never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
 - **Nothing repaints per chat line.** The client calls `FCF_StartAlertFlash` for every message arriving in a window that is not on screen — every combat-log line during a pull. Both hooks on that path decide they have nothing to do in a single field read, and the case fails the build if that ever regresses: 3000 combat-log lines cause one repaint, and 3000 dock updates cause none.
-- **Nothing runs per frame.** There is no `OnUpdate` anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved.
+- **Nothing runs per frame.** There is no `OnUpdate` installed anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved. The single exception is while you physically drag the optional scroll bar's thumb: that handler goes on at mouse-down and comes off at mouse-up, which is why the hunt below still finds none.
 - **The skin is built once.** One backdrop frame per window carrying five textures — a fill and four hairline edges — created the first time the window is seen and afterwards only recoloured and re-anchored.
 - **A hidden button costs one event handler.** Buttons are hidden by an `OnShow` hook rather than a poll, so the cost lands only when the client was going to show one anyway.
 - **Being told to re-apply costs almost nothing.** The client asks on every visit to the options panel, every dock and undock, and some loading screens. Each module records what it last applied and compares before doing it again, and the measurements a repaint depends on are taken once per pass rather than once per module that wants them. A re-apply that finds nothing changed was 261 client calls; it is now 21, and most of that is asking the client whether anything has moved.
@@ -76,6 +76,7 @@ than anybody switches tabs.
 - Tabs stay readable instead of fading out when the mouse is elsewhere
 - A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
 - Every button around the frame — chat menu, group finder, scroll arrows, voice, combat log bar — individually hideable, and hidden by default
+- An optional flat scroll bar down the right edge, off by default, and shown only while you hover the window when it is on
 - The edit box moved out from under the last line of chat, with a border coloured by the channel you are about to speak in
 - Arrow keys that move the cursor rather than scrolling chat history
 - 1000 lines of history kept instead of Blizzard's 128, so the copy button has something to copy
@@ -126,6 +127,25 @@ that one stays.
 Turning one back on restores what the client had, not what it did not: a
 microphone reappears when you are in a voice channel, and a scroll arrow when
 there is something to scroll.
+
+### The scroll bar
+
+Off by default. Blizzard's own scrollbar is hidden with the rest of the chrome,
+and this draws a flat one in the window's colours instead: a faint track down
+the right edge with a thumb whose height is how much of the backlog is on
+screen. Drag it, click the track to page, or use the wheel over it as you would
+anywhere else in the window.
+
+Once it is on, it shows only while you hover the chat window, which is the
+setting it was asked for. "Dimmed until hovered" and "Always" keep it on screen
+as a visible control instead, and all three sit under **Scroll Bar** in the
+settings, along with its width and colour.
+
+Nothing about it runs per frame, and nothing about it touches the message path
+— the thumb moves from the client's own scroll calls, and `AddMessage` is
+deliberately left alone. A message arriving while you sit scrolled up nudges the
+thumb on your next scroll rather than instantly, which is the right way round for
+a chat addon.
 
 ### What it deliberately does not do
 

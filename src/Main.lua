@@ -38,6 +38,7 @@ local MINIMAL = {
     tabsInside = false,         -- nothing drawn on the client's dock
     styleEditBox = false,       -- the edit box left where the client put it
     copyButton = false,         -- no button parented to the dock
+    scrollBar = false,          -- no hooks on the client's scroll functions
     shortChannelNames = false,  -- the client's own channel wording
     urlLinks = false,           -- no filter on the client's chat events
     maxLines = 0,               -- the message buffer never reallocated
@@ -61,6 +62,7 @@ local MINIMAL = {
 local TRY_GROUPS = {
     tabs = { "styleTabs", "tabsInside" },
     copy = { "copyButton" },
+    scrollbar = { "scrollBar" },
     editbox = { "styleEditBox" },
     buttons = {
         "showMenuButton", "showSocialButton", "showScrollButtons",
@@ -71,7 +73,7 @@ local TRY_GROUPS = {
     buffer = { "maxLines" },
 }
 
-local TRY_ORDER = { "tabs", "buttons", "copy", "editbox", "links", "channels", "buffer" }
+local TRY_ORDER = { "tabs", "buttons", "copy", "scrollbar", "editbox", "links", "channels", "buffer" }
 
 --- Re-apply everything after a settings change. The bisect commands all end
 --- here, so they cannot drift apart over which modules need telling.
@@ -456,6 +458,7 @@ PeaversCommons.Events:Init(addonName, function()
     PC.Tabs:Initialize()
     PC.EditBox:Initialize()
     PC.Buttons:Initialize()
+    PC.ScrollBar:Initialize()
     PC.Links:Initialize()
     PC.Copy:Initialize()
     -- Registers a Frames handler, so it must come before Frames:Initialize()

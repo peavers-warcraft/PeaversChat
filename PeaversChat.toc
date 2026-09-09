@@ -26,6 +26,7 @@ src\Core\Skin.lua
 src\Core\Tabs.lua
 src\Core\EditBox.lua
 src\Core\Buttons.lua
+src\Core\ScrollBar.lua
 src\Core\Links.lua
 src\Core\Copy.lua
 src\Core\Channels.lua
