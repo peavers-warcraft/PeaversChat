@@ -125,33 +125,47 @@ Buttons.ApplyGlobals = ApplyGlobals
 --- named off the frame, and the newer ScrollBar / ScrollToBottomButton fields.
 --- Both are looked for, and whichever exists is what gets managed.
 ---
---- The Classic clients sit in between. They have the ButtonFrame strip and the
---- ScrollToBottomButton field, but no ScrollBar - so on Classic the "Scroll
---- Buttons" setting is the strip's arrows and nothing else, and the ScrollBar
---- line below simply finds nothing. Retail gets both paths, as it always did.
+--- The Classic clients sit in between, and that decides which jump-to-newest
+--- button is the real one. They have the old strip AND the frame's own
+--- ScrollToBottomButton, but no ScrollBar. The strip stands in a column to the
+--- LEFT of the window, so answering "Jump To Newest" with the strip's copy
+--- leaves an arrow floating beside the chat box while the modern button sits
+--- where it belongs. Where the frame has its own, that is the setting's button
+--- and the strip's copy is hidden outright.
 ---
 --- Minimize is in the scroll group on purpose, on every client. It lives in the
 --- same strip as the arrows, only appears beside an undocked window, and would
 --- be the last gold bevel on a flat box. "Scroll Buttons" on brings the whole
 --- strip back as the client drew it.
+---
+--- @return table scroll    hidden unless Scroll Buttons is on
+--- @return table bottom    hidden unless Jump To Newest is on
+--- @return table replaced  always hidden: a strip button the frame supersedes
 local function ScrollParts(frame)
     local name = frame:GetName()
-    local scroll, bottom = {}, {}
+    local scroll, bottom, replaced = {}, {}, {}
 
+    local stripBottom
     if name then
         local buttonFrame = _G[name .. "ButtonFrame"]
         if buttonFrame then
             scroll[#scroll + 1] = _G[name .. "ButtonFrameUpButton"] or buttonFrame.UpButton
             scroll[#scroll + 1] = _G[name .. "ButtonFrameDownButton"] or buttonFrame.DownButton
-            bottom[#bottom + 1] = _G[name .. "ButtonFrameBottomButton"] or buttonFrame.BottomButton
+            stripBottom = _G[name .. "ButtonFrameBottomButton"] or buttonFrame.BottomButton
             scroll[#scroll + 1] = _G[name .. "ButtonFrameMinimizeButton"] or buttonFrame.MinimizeButton
         end
     end
 
     if frame.ScrollBar then scroll[#scroll + 1] = frame.ScrollBar end
-    if frame.ScrollToBottomButton then bottom[#bottom + 1] = frame.ScrollToBottomButton end
 
-    return scroll, bottom
+    if frame.ScrollToBottomButton then
+        bottom[#bottom + 1] = frame.ScrollToBottomButton
+        if stripBottom then replaced[#replaced + 1] = stripBottom end
+    elseif stripBottom then
+        bottom[#bottom + 1] = stripBottom
+    end
+
+    return scroll, bottom, replaced
 end
 
 local function ButtonFrameFor(frame)
@@ -162,7 +176,7 @@ end
 local function Apply(frame)
     local cfg = PC.Config
 
-    local scroll, bottom = ScrollParts(frame)
+    local scroll, bottom, replaced = ScrollParts(frame)
 
     for i = 1, #scroll do
         SetHidden(scroll[i], cfg.enabled and not cfg.showScrollButtons)
@@ -170,20 +184,28 @@ local function Apply(frame)
     for i = 1, #bottom do
         SetHidden(bottom[i], cfg.enabled and not cfg.showBottomButton)
     end
+    for i = 1, #replaced do
+        SetHidden(replaced[i], cfg.enabled and true or false)
+    end
 
     -- With nothing left inside it, the container is just a gold-edged rectangle.
+    -- Its own jump-to-newest button only keeps it alive where it is the button
+    -- the setting controls: where the frame has a modern one, the strip is empty
+    -- the moment the arrows go, which is the default.
+    local keepsBottom = #replaced == 0 and cfg.showBottomButton
     local buttonFrame = ButtonFrameFor(frame)
     if buttonFrame then
         Skin.KillChrome(buttonFrame)
         SetHidden(buttonFrame,
-            cfg.enabled and not cfg.showScrollButtons and not cfg.showBottomButton)
+            cfg.enabled and not cfg.showScrollButtons and not keepsBottom)
     end
 end
 
 local function Restore(frame)
-    local scroll, bottom = ScrollParts(frame)
+    local scroll, bottom, replaced = ScrollParts(frame)
     for i = 1, #scroll do SetHidden(scroll[i], false) end
     for i = 1, #bottom do SetHidden(bottom[i], false) end
+    for i = 1, #replaced do SetHidden(replaced[i], false) end
 
     local buttonFrame = ButtonFrameFor(frame)
     if buttonFrame then
