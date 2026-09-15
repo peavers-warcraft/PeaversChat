@@ -284,7 +284,12 @@ EditMode.ENTRIES = {
     -- All off by default bar one: everything here duplicates something reachable
     -- elsewhere, which is why the frame is cleaner without them.
     { key = "showMenuButton", label = "Chat Menu", kind = "checkbox", section = "buttons", default = false },
-    { key = "showSocialButton", label = "Group Finder Toast", kind = "checkbox", section = "buttons", default = false },
+    {
+        key = "showSocialButton", label = "Social Button", kind = "checkbox",
+        section = "buttons", default = false,
+        desc = "The group finder toast beside the chat window, or the friends "
+            .. "button on clients that have no toast.",
+    },
     { key = "showScrollButtons", label = "Scroll Buttons", kind = "checkbox", section = "buttons", default = false },
     {
         key = "showBottomButton", label = "Jump To Newest", kind = "checkbox",

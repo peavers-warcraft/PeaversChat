@@ -147,7 +147,7 @@ local PC_DEFAULTS = {
     -- makes the default chat window look like the default chat window.
     ----------------------------------------------------------------------------
     showMenuButton = false,     -- the chat menu, bottom-left
-    showSocialButton = false,   -- QuickJoinToast, the group finder toast
+    showSocialButton = false,   -- QuickJoinToast on retail, FriendsMicroButton on Classic
     showScrollButtons = false,  -- page up / page down
     showBottomButton = true,    -- jump to the newest message (earns its place)
     showVoiceButtons = false,   -- channel, mute, deafen
@@ -198,8 +198,10 @@ local PC_DEFAULTS = {
     -- its format string, and say is the one channel that kept working.
     shortChannelNames = false,
     shortChannelNamesWithdrawn = false,
-    -- A Blizzard CVar value, "none", or "default" meaning leave whatever the
-    -- player already set in the game's own options.
+    -- "default" leaves whatever the player already set in the game's own
+    -- options; "none", "hm" or "hms" are turned into the CVar's own format by
+    -- Channels:ApplyTimestamps. A raw format string from an older build is
+    -- still honoured.
     timestamps = "default",
 
     -- Where /pchat minimal keeps what it turned off, so it can put it back.

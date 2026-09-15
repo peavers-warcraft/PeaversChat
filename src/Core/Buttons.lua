@@ -73,15 +73,29 @@ end
 -- The buttons that live outside any one chat frame
 --------------------------------------------------------------------------------
 
+--- Names that do not exist on a given client resolve to nil and are skipped by
+--- SetHidden without a word. That is deliberate rather than lucky: the Classic
+--- clients have no voice mute or deafen button at all, and a missing button is
+--- a button that is already not on screen.
 local GLOBAL_GROUPS = {
     showMenuButton = { "ChatFrameMenuButton" },
-    showSocialButton = { "QuickJoinToastButton" },
     showVoiceButtons = {
         "ChatFrameChannelButton",
         "ChatFrameToggleVoiceDeafenButton",
         "ChatFrameToggleVoiceMuteButton",
     },
 }
+
+--- The social button beside the chat window, which is a different widget
+--- depending on which client this is.
+---
+--- Retail has QuickJoinToastButton. Classic never got it and still has
+--- FriendsMicroButton in the same spot doing the same job. Strictly a fallback:
+--- FriendsMicroButton is only touched on a client with no toast to manage, so
+--- retail never has it hidden.
+local function SocialButton()
+    return Resolve("QuickJoinToastButton") or Resolve("FriendsMicroButton")
+end
 
 local function ApplyGlobals()
     local cfg = PC.Config
@@ -92,6 +106,8 @@ local function ApplyGlobals()
             SetHidden(Resolve(names[i]), hidden)
         end
     end
+
+    SetHidden(SocialButton(), cfg.enabled and not cfg.showSocialButton)
 
     -- Blizzard_CombatLog's quick-filter bar: a gold strip that sits on top of
     -- the combat log tab and belongs to a different decade.
@@ -108,6 +124,16 @@ Buttons.ApplyGlobals = ApplyGlobals
 --- Blizzard has moved the scroll affordances twice: the old three-button strip
 --- named off the frame, and the newer ScrollBar / ScrollToBottomButton fields.
 --- Both are looked for, and whichever exists is what gets managed.
+---
+--- The Classic clients sit in between. They have the ButtonFrame strip and the
+--- ScrollToBottomButton field, but no ScrollBar - so on Classic the "Scroll
+--- Buttons" setting is the strip's arrows and nothing else, and the ScrollBar
+--- line below simply finds nothing. Retail gets both paths, as it always did.
+---
+--- Minimize is in the scroll group on purpose, on every client. It lives in the
+--- same strip as the arrows, only appears beside an undocked window, and would
+--- be the last gold bevel on a flat box. "Scroll Buttons" on brings the whole
+--- strip back as the client drew it.
 local function ScrollParts(frame)
     local name = frame:GetName()
     local scroll, bottom = {}, {}

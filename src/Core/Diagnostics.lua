@@ -141,8 +141,16 @@ function Diagnostics:Report()
             -- None of these filters are ours: this addon installs none. A
             -- non-zero count is another addon, which is the single most useful
             -- line in a chat bug report and otherwise impossible to find out.
-            print(("  %s: %d arrived, %d message filter(s) installed by other addons")
-                :format(event, count, FilterCount(event) or 0))
+            -- Classic has no ChatFrame_GetMessageEventFilters; "0" would be a
+            -- false claim there, so it says it cannot tell.
+            local filters = FilterCount(event)
+            if filters then
+                print(("  %s: %d arrived, %d message filter(s) installed by other addons")
+                    :format(event, count, filters))
+            else
+                print(("  %s: %d arrived (this client cannot list message filters)")
+                    :format(event, count))
+            end
         end
     end
 

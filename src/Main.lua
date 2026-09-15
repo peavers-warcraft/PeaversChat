@@ -6,7 +6,10 @@ local Utils = PeaversCommons.Utils
 
 -- Initialize addon namespace
 PC.name = addonName
-PC.version = C_AddOns.GetAddOnMetadata(addonName, "Version") or "1.0.0"
+-- The bare global for a build without C_AddOns; a version string is no reason
+-- for the file to error.
+local GetMetadata = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+PC.version = (GetMetadata and GetMetadata(addonName, "Version")) or "1.0.0"
 
 local BUTTON_KEYS = {
     "showMenuButton", "showSocialButton", "showScrollButtons",

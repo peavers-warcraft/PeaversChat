@@ -195,12 +195,43 @@ Channels.TIMESTAMP_OPTIONS = {
     { value = "%I:%M %p ", label = "02:32 PM" },
 }
 
+--- What the Edit Mode dropdown stores, turned into what the CVar wants.
+---
+--- The dropdown saves short keys; showTimestamps takes a strftime format or
+--- "none". Writing "hm" into it was accepted and then printed "hm" in front of
+--- every line. The trailing space is Blizzard's own, as its options panel writes.
+local TIMESTAMP_FORMATS = {
+    hm = "%H:%M ",
+    hms = "%H:%M:%S ",
+}
+
+--- The value to write, or nil for "leave the CVar alone".
+---
+--- A raw format saved by an earlier build is already what the CVar wants and
+--- passes through. A word with no % in it is refused rather than printed.
+local function TimestampFormat(value)
+    if type(value) ~= "string" then return nil end
+    if value == "none" then return value end
+    if TIMESTAMP_FORMATS[value] then return TIMESTAMP_FORMATS[value] end
+    if value:find("%", 1, true) then return value end
+    return nil
+end
+
+Channels.TimestampFormat = TimestampFormat
+
 function Channels:ApplyTimestamps()
     local value = PC.Config.timestamps
     if not value or value == "default" then return end
     if not PC.Config.enabled then return end
 
-    pcall(SetCVar, "showTimestamps", value)
+    local format = TimestampFormat(value)
+    if not format then return end
+
+    -- The global first, C_CVar for a client that has retired it.
+    local setter = _G.SetCVar or (_G.C_CVar and _G.C_CVar.SetCVar)
+    if type(setter) ~= "function" then return end
+
+    pcall(setter, "showTimestamps", format)
 end
 
 function Channels:Initialize()
