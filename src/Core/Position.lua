@@ -115,8 +115,19 @@ function Position:Apply(frame, force)
 
     -- Size first, then position: setting a size can nudge an anchored frame, so
     -- doing it the other way round leaves the window a few pixels out.
+    --
+    -- Through FCF_SetWindowSize rather than SetSize, because the client keeps
+    -- its own record of a chat window's size and restores from it at login. A
+    -- raw SetSize resizes the frame and tells the client nothing, so the window
+    -- looked right until the next reload and then snapped back to whatever the
+    -- client still believed - which is exactly what a layout preview looked like
+    -- keeping and then lost on the reload that followed it.
     if width > 0 and height > 0 then
-        pcall(frame.SetSize, frame, width, height)
+        if type(_G.FCF_SetWindowSize) == "function" then
+            pcall(_G.FCF_SetWindowSize, frame, width, height)
+        else
+            pcall(frame.SetSize, frame, width, height)
+        end
     end
 
     pcall(frame.SetUserPlaced, frame, true)
@@ -134,6 +145,46 @@ end
 function Position:Reapply()
     placed = false
     self:Apply(nil, true)
+end
+
+--------------------------------------------------------------------------------
+-- The login check
+--
+-- Placement is a one-shot, and the client restores its own idea of a chat
+-- window's geometry around the same moment - sometimes after us. Anything that
+-- lands after the placement wins, because every later refresh returns early on
+-- `placed`, and the window sits at a size nobody asked for until it is moved by
+-- hand.
+--
+-- So the size is read back once, a second after the world loads, and the
+-- placement is redone only if what is on screen is not what the config asked
+-- for. It is not enforcement: it runs once per login, compares before acting,
+-- and anything the player does afterwards is theirs to keep.
+--------------------------------------------------------------------------------
+
+local CHECK_DELAY = 1
+local TOLERANCE = 2
+
+function Position:VerifySize()
+    local cfg = PC.Config
+    if not cfg or not cfg.enabled or not cfg.positionEnabled then return false end
+
+    local width = tonumber(cfg.chatWidth) or 0
+    local height = tonumber(cfg.chatHeight) or 0
+    if width <= 0 or height <= 0 then return false end
+
+    local frame = DockLeader()
+    if not frame or InCombatLockdown() then return false end
+
+    local actualWidth = frame:GetWidth() or 0
+    local actualHeight = frame:GetHeight() or 0
+    if math.abs(actualWidth - width) <= TOLERANCE
+        and math.abs(actualHeight - height) <= TOLERANCE then
+        return false
+    end
+
+    self:Reapply()
+    return true
 end
 
 --------------------------------------------------------------------------------
@@ -225,6 +276,18 @@ function Position:Initialize()
                 moment, ClearClamps, Position)
         end
     end
+
+    -- One look after the world has loaded, for the geometry the client restores
+    -- on its own timing rather than ours. Once per login, and only if what is on
+    -- screen disagrees with the config - see VerifySize.
+    local checked = false
+    PeaversCommons.Events:RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        if checked then return end
+        checked = true
+        C_Timer.After(CHECK_DELAY, function()
+            Position:VerifySize()
+        end)
+    end)
 
     -- Deferred work from a fight. Cheap: returns immediately unless something
     -- actually asked to be moved.
