@@ -215,6 +215,36 @@ function Skin:EnsureBox(frame)
     return box
 end
 
+--- The fill behind the window and the tab strip.
+---
+--- Painted with the collection's bundled bar texture - Peavers Flat - rather
+--- than a plain colour, so the chat box is the same surface the unit frames and
+--- every Peavers bar are drawn with rather than a rectangle that merely happens
+--- to be the same colour. The texture is tinted, so bgColor still decides the
+--- colour and bgAlpha still decides how much of the world shows through.
+---
+--- Falls back to a colour fill where there is no texture to use or the file will
+--- not load: a chat window with no background at all is a worse answer than a
+--- plain one.
+local function FillTexture()
+    local cfg = PC.Config
+    if cfg.barTexture and cfg.barTexture ~= "" then return cfg.barTexture end
+    local Theme = _G.PeaversCommons and _G.PeaversCommons.Theme
+    return Theme and Theme.DefaultBarTexture or nil
+end
+
+local function Fill(texture, bgColor, bgAlpha)
+    local path = FillTexture()
+    if path then
+        texture:SetTexture(path)
+        if texture:GetTexture() then
+            texture:SetVertexColor(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
+            return
+        end
+    end
+    texture:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
+end
+
 --- Colour and place a box. `pad` pushes it out beyond the frame's own rect, so
 --- the message text gets some air rather than sitting against the border.
 ---
@@ -242,7 +272,7 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
     box.bg:ClearAllPoints()
     box.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, topPad)
     box.bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom)
-    box.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
+    Fill(box.bg, bgColor, bgAlpha)
     box.bg:SetShown(showBg and true or false)
 
     -- The four edges sit on the padded rect, not on the frame, so the border is
@@ -459,7 +489,7 @@ function Skin:PaintStrip(host, frame, pad, height, bgColor, bgAlpha, borderColor
     strip.bg:ClearAllPoints()
     strip.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top)
     strip.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", right, 0)
-    strip.bg:SetColorTexture(bgColor.r, bgColor.g, bgColor.b, bgAlpha)
+    Fill(strip.bg, bgColor, bgAlpha)
     strip.bg:SetShown(showBg and true or false)
 
     strip.top:ClearAllPoints()
@@ -508,7 +538,7 @@ local function PaintSignature(frame, pad, strip)
 
     return table.concat({
         strip, pad.left, pad.right, pad.top, pad.bottom,
-        bg.r, bg.g, bg.b, cfg.bgAlpha,
+        bg.r, bg.g, bg.b, cfg.bgAlpha, tostring(FillTexture()),
         border.r, border.g, border.b,
         cfg.background and 1 or 0, cfg.border and 1 or 0,
         Hairline(frame),
