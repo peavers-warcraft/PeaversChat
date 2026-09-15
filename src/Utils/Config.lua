@@ -29,14 +29,16 @@ local PC_DEFAULTS = {
     --
     -- Colours are spelled out rather than read from PeaversCommons.Theme so that
     -- a future reskin of the config UI does not silently restyle everybody's
-    -- chat window. They are the same values: #161616 paper, #2d2d2d hairline.
+    -- chat window. The hairline is the config UI's #2d2d2d; the fill is the flat
+    -- black PeaversUnitFrames paints its frames with, so a screen running both
+    -- reads as one surface rather than two nearly-matching dark greys.
     --
     -- 0.6 alpha rather than the config UI's 0.97: chat sits over the world for
     -- hours at a time, and a fully opaque slab in the corner of the screen is a
     -- different thing from an opaque settings panel you open for a minute.
     ----------------------------------------------------------------------------
     background = true,
-    bgColor = { r = 0.086, g = 0.086, b = 0.086 },
+    bgColor = { r = 0, g = 0, b = 0 },
     bgAlpha = 0.60,
     border = true,
     borderColor = { r = 0.176, g = 0.176, b = 0.176 },
