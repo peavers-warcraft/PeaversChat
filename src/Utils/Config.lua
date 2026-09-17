@@ -79,6 +79,14 @@ local PC_DEFAULTS = {
     ----------------------------------------------------------------------------
     positionEnabled = false,
     chatPoint = "BOTTOMLEFT",
+    -- The corner of the screen `chatPoint` is measured from. Stored because
+    -- GetPoint returns it and an anchor does not round-trip without it: a window
+    -- whose TOPLEFT sits against the screen's BOTTOMLEFT is not the same window
+    -- as one whose TOPLEFT sits against the screen's TOPLEFT, and replaying the
+    -- second when the first was captured moves it a screen height. nil means the
+    -- same corner, which is what every position written before this existed
+    -- meant and what the settings page still writes.
+    chatRelativePoint = nil,
     chatX = 0,
     chatY = 22,
     -- 0 means "leave the size alone", which is what somebody who wants the
