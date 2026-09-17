@@ -13,9 +13,26 @@
 --
 -- What that leaves is a placement that happens at login and when something asks
 -- for it explicitly - the settings button, /pchat move, a UI pack layout being
--- installed - and a window that is yours the rest of the time. Blizzard already
--- persists chat geometry through FCF_SavePositionAndDimensions, so a position
--- set once survives reloads on its own without being re-imposed.
+-- installed - and a window that is yours the rest of the time.
+--
+-- THE PART THAT IS NOT TRUE, and is worth writing down because it was the
+-- premise of the design above: "Blizzard already persists chat geometry, so a
+-- position set once survives reloads on its own." It does not, for the one
+-- window this file moves. FCF_RestorePositionAndDimensions opens with
+--
+--     if (chatFrame == DEFAULT_CHAT_FRAME) then return end
+--
+-- on Mainline and on Classic alike - the comment there says the default frame is
+-- controlled by Edit Mode, and Classic Era has no Edit Mode at all. Blizzard
+-- still *saves* ChatFrame1's geometry on a drag; it never puts it back. So the
+-- placement below is not a courtesy on top of Blizzard's persistence, it is the
+-- only thing restoring the window, and every reload of the game depends on it.
+--
+-- The two records also do not agree on units. Blizzard stores a fraction of the
+-- screen - GetLeft()/screenWidth, from a corner it picks by which half of the
+-- screen the window's centre is in - and this addon stores absolute offsets from
+-- a corner the player chose. Round-tripping between them is not identity, which
+-- is the first place to look when a window drifts by a few units per reload.
 --
 -- And when you do move it, the config follows rather than fights: Blizzard calls
 -- FCF_SavePositionAndDimensions after a user move, and that is hooked to learn
@@ -116,18 +133,21 @@ function Position:Apply(frame, force)
     -- Size first, then position: setting a size can nudge an anchored frame, so
     -- doing it the other way round leaves the window a few pixels out.
     --
-    -- Through FCF_SetWindowSize rather than SetSize, because the client keeps
-    -- its own record of a chat window's size and restores from it at login. A
-    -- raw SetSize resizes the frame and tells the client nothing, so the window
-    -- looked right until the next reload and then snapped back to whatever the
-    -- client still believed - which is exactly what a layout preview looked like
-    -- keeping and then lost on the reload that followed it.
+    -- SetSize, and then tell the client separately.
+    --
+    -- This used to prefer FCF_SetWindowSize, on the reasoning that the client
+    -- keeps its own record of a chat window's size and a raw SetSize would leave
+    -- that record stale. The reasoning was right and the function is not real:
+    -- there is no FCF_SetWindowSize in FrameXML on any client - not Mainline,
+    -- not Classic - so the type check never passed and every install has been
+    -- taking the SetSize branch this whole time.
+    --
+    -- What Blizzard actually writes its record with is
+    -- SetChatWindowSavedDimensions, which is what FCF_SavePositionAndDimensions
+    -- calls. Persist() below goes through that, so the record is updated - the
+    -- dead branch was never the thing keeping it in step.
     if width > 0 and height > 0 then
-        if type(_G.FCF_SetWindowSize) == "function" then
-            pcall(_G.FCF_SetWindowSize, frame, width, height)
-        else
-            pcall(frame.SetSize, frame, width, height)
-        end
+        pcall(frame.SetSize, frame, width, height)
     end
 
     pcall(frame.SetUserPlaced, frame, true)
@@ -242,7 +262,30 @@ function Position:Initialize()
         hooksecurefunc("FCF_SavePositionAndDimensions", function(frame)
             if placing then return end
             if not PC.Config.positionEnabled then return end
-            if not Position:IsLeader(frame) then return end
+
+            -- Deliberately NOT "only if this is the dock leader", which is what
+            -- it used to say and which quietly dropped most resizes.
+            --
+            -- The resize grabber's OnMouseUp in FloatingChatFrame.xml sizes the
+            -- dock leader when the window is docked:
+            --
+            --     if self:GetParent().isDocked then
+            --         GENERAL_CHAT_DOCK.primary:StopMovingOrSizing()
+            --     ...
+            --     FCF_SavePositionAndDimensions(self:GetParent())
+            --
+            -- It resizes the leader and then reports the *child* whose grabber
+            -- was dragged. So resizing with any tab but the first one selected
+            -- arrived here as a frame that is not the leader, got dropped, and
+            -- was never written to the config - and the next login put the old
+            -- size back. Which is exactly what "it snaps to size every reload"
+            -- looks like from the outside.
+            --
+            -- A docked frame's geometry is the leader's, so either one is a
+            -- reason to go and read the leader.
+            if not (Position:IsLeader(frame) or (frame and frame.isDocked)) then
+                return
+            end
 
             Position:CaptureCurrent()
         end)
