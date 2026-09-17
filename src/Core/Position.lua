@@ -64,6 +64,11 @@ local pendingCombat = false
 -- the code written after it.
 local PlayerIsDragging
 
+-- Set while Edit Mode is open: nothing here puts a window back while the player
+-- is deliberately arranging it. Cleared once the new position has been read,
+-- not the moment Edit Mode closes - see LearnFromEditMode.
+local editing = false
+
 --------------------------------------------------------------------------------
 -- The window
 --------------------------------------------------------------------------------
@@ -205,6 +210,10 @@ end
 -- True while the player has hold of the window. Checked rather than tracked: the
 -- client owns both of these and there is no event for either.
 function PlayerIsDragging()
+    -- Edit Mode counts. It is a longer drag with a panel attached, and the same
+    -- rule applies: what is on screen is the player's doing.
+    if editing then return true end
+
     if _G.MOVING_CHATFRAME then return true end
 
     local frame = DockLeader()
@@ -336,32 +345,56 @@ function Position:Initialize()
     -- Edit Mode
     --
     -- Edit Mode reasserts chat window geometry, clamping margin included, when
-    -- it opens and when a layout is applied. With a margin back in place the
-    -- window jumps away from the screen edge and refuses to be dragged to it
-    -- again - which is the bug this is here to stop.
-    --
-    -- Clearing on the way in matters most: it means the drag itself is
-    -- unclamped, so the window can be put where you actually want it rather
-    -- than where the margin allows.
+    -- it opens and when a layout is applied. Clearing on the way in matters
+    -- most: it means the drag itself is unclamped, so the window goes where you
+    -- want it rather than where the margin allows.
     ----------------------------------------------------------------------------
     local function ClearClamps()
         if not PC.Config.enabled then return end
+        if not PC.Config.edgeToEdge then return end
+        if not PC.Skin or not PC.Skin.ClearClampFor then return end
 
-        if PC.Config.edgeToEdge and PC.Skin and PC.Skin.ClearClampFor then
-            Frames:Each(function(frame)
-                PC.Skin.ClearClampFor(frame)
-            end)
+        Frames:Each(function(frame)
+            PC.Skin.ClearClampFor(frame)
+        end)
+    end
+
+    ----------------------------------------------------------------------------
+    -- Leaving Edit Mode
+    --
+    -- Learn where the window ended up. Not put it back: that was tried, and it
+    -- re-applied a config that had never heard about the move, which is exactly
+    -- how a window arranged in Edit Mode snapped home as you closed it.
+    --
+    -- The gap is that Edit Mode does not go through
+    -- FCF_SavePositionAndDimensions. FrameXML calls that from two places, both
+    -- of them the native drag, so the hook keeping this config in step never
+    -- hears about an Edit Mode move and every later re-assert is stale.
+    --
+    -- On the way out only: Edit Mode moves chat windows to its own layout when
+    -- it opens and when a layout is applied, and capturing those would overwrite
+    -- the player's position with one Edit Mode chose.
+    ----------------------------------------------------------------------------
+    local function LearnFromEditMode()
+        -- A frame later, so the geometry has settled out of whatever Edit Mode
+        -- does on its way down before it is read.
+        --
+        -- `editing` is cleared here rather than the instant Edit Mode closed,
+        -- which is what keeps the two halves in order: until the new position
+        -- has been read, PlayerIsDragging still answers yes and nothing can
+        -- re-assert the old one over it.
+        local function finish()
+            if PC.Config.enabled and PC.Config.positionEnabled then
+                Position:CaptureCurrent()
+            end
+            editing = false
         end
 
-        -- And put the window back, because leaving Edit Mode is one of the
-        -- moments the client redoes its own background anchors - which ends in
-        -- SetClampRectInsets and can shove a window that was sitting against a
-        -- screen edge. Clearing the margin after the shove does not undo it; the
-        -- window has already moved, and only a re-place returns it.
-        --
-        -- Deferred through Reassert like every other one, so it lands after
-        -- whatever the client is in the middle of.
-        Position:Reassert()
+        if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+            _G.C_Timer.After(0, finish)
+        else
+            finish()
+        end
     end
 
     PeaversCommons.Events:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", ClearClamps)
@@ -371,6 +404,12 @@ function Position:Initialize()
             pcall(_G.EventRegistry.RegisterCallback, _G.EventRegistry,
                 moment, ClearClamps, Position)
         end
+
+        pcall(_G.EventRegistry.RegisterCallback, _G.EventRegistry,
+            "EditMode.Enter", function() editing = true end, Position)
+
+        pcall(_G.EventRegistry.RegisterCallback, _G.EventRegistry,
+            "EditMode.Exit", LearnFromEditMode, Position)
     end
 
     ----------------------------------------------------------------------------

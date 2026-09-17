@@ -185,16 +185,14 @@ end
 --         self.Background:SetPoint("TOPRIGHT", self, "TOPRIGHT", 2 + scrollbarWidth, ...)
 --         self:SetClampRectInsets(-35, 35 + scrollbarWidth, 38, -50)
 --
--- So a scroll bar that is hidden but still its old width leaves the window's
--- background reaching past its right edge by that much, and the clamp reserving
--- the same strip again. Up against the right of the screen that is visible as
--- the window sitting a scroll bar's width in from the edge - and as it jumping
--- by that much whenever the client re-runs the function, which it does on
--- leaving Edit Mode.
+-- So a hidden scroll bar that is still its old width leaves the background
+-- reaching past the window's right edge by that much, and the clamp reserving
+-- the same strip again - visible against the right of the screen as the window
+-- sitting a scroll bar's width in from the edge.
 --
--- Zeroing the width is what makes the client's own arithmetic come out right,
--- rather than another thing fighting it afterwards. The original is kept so
--- switching the addon off gives the bar its size back along with its visibility.
+-- Collapsing the width makes the client's own arithmetic come out right rather
+-- than fighting it afterwards. The original is kept so switching the addon off
+-- gives the bar its size back along with its visibility.
 --------------------------------------------------------------------------------
 local COLLAPSED = 0.001
 
