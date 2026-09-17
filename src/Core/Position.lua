@@ -22,8 +22,12 @@
 --
 --     if (chatFrame == DEFAULT_CHAT_FRAME) then return end
 --
--- on Mainline and Classic alike, so the client saves ChatFrame1's geometry and
--- never puts it back. This file is the only thing restoring the window.
+-- on Mainline and Classic alike - Edit Mode ships on every client now - so the
+-- FCF path saves ChatFrame1's geometry and never puts it back. What restores it
+-- is the Edit Mode layout, which is a different record again and knows nothing
+-- about this addon's settings. That is the third position for one window, and
+-- the reason this file re-asserts rather than places once: it has to land after
+-- Edit Mode has had its say.
 --
 -- The two records do not agree on units either: the client stores a fraction of
 -- the screen, from a corner it picks by which half the window's centre is in,
