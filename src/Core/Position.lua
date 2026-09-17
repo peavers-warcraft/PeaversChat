@@ -15,24 +15,19 @@
 -- for it explicitly - the settings button, /pchat move, a UI pack layout being
 -- installed - and a window that is yours the rest of the time.
 --
--- THE PART THAT IS NOT TRUE, and is worth writing down because it was the
--- premise of the design above: "Blizzard already persists chat geometry, so a
--- position set once survives reloads on its own." It does not, for the one
--- window this file moves. FCF_RestorePositionAndDimensions opens with
+-- THE PART THAT IS NOT TRUE, and worth recording because the design above rested
+-- on it: "Blizzard persists chat geometry, so a position set once survives
+-- reloads on its own." Not for the one window this file moves.
+-- FCF_RestorePositionAndDimensions opens with
 --
 --     if (chatFrame == DEFAULT_CHAT_FRAME) then return end
 --
--- on Mainline and on Classic alike - the comment there says the default frame is
--- controlled by Edit Mode, and Classic Era has no Edit Mode at all. Blizzard
--- still *saves* ChatFrame1's geometry on a drag; it never puts it back. So the
--- placement below is not a courtesy on top of Blizzard's persistence, it is the
--- only thing restoring the window, and every reload of the game depends on it.
+-- on Mainline and Classic alike, so the client saves ChatFrame1's geometry and
+-- never puts it back. This file is the only thing restoring the window.
 --
--- The two records also do not agree on units. Blizzard stores a fraction of the
--- screen - GetLeft()/screenWidth, from a corner it picks by which half of the
--- screen the window's centre is in - and this addon stores absolute offsets from
--- a corner the player chose. Round-tripping between them is not identity, which
--- is the first place to look when a window drifts by a few units per reload.
+-- The two records do not agree on units either: the client stores a fraction of
+-- the screen, from a corner it picks by which half the window's centre is in,
+-- and this addon stores absolute offsets from a corner the player chose.
 --
 -- And when you do move it, the config follows rather than fights: Blizzard calls
 -- FCF_SavePositionAndDimensions after a user move, and that is hooked to learn
@@ -63,6 +58,11 @@ local placed = false
 local placing = false
 
 local pendingCombat = false
+
+-- Forward declaration. Defined under "Holding the position against the client",
+-- below, but Apply above it has to be able to ask - and a local only exists for
+-- the code written after it.
+local PlayerIsDragging
 
 --------------------------------------------------------------------------------
 -- The window
@@ -104,6 +104,12 @@ function Position:Apply(frame, force)
 
     if placed and not force then return end
 
+    -- Never while the player has hold of it. Reassert checks this too; Apply
+    -- checks it again because /pchat move, the settings button and a UI pack
+    -- install all arrive here directly, and none of them is worth yanking a
+    -- window out of somebody's hand for.
+    if PlayerIsDragging() then return end
+
     frame = frame or DockLeader()
     if not frame or not self:IsLeader(frame) then return end
 
@@ -133,26 +139,21 @@ function Position:Apply(frame, force)
     -- Size first, then position: setting a size can nudge an anchored frame, so
     -- doing it the other way round leaves the window a few pixels out.
     --
-    -- SetSize, and then tell the client separately.
-    --
-    -- This used to prefer FCF_SetWindowSize, on the reasoning that the client
-    -- keeps its own record of a chat window's size and a raw SetSize would leave
-    -- that record stale. The reasoning was right and the function is not real:
-    -- there is no FCF_SetWindowSize in FrameXML on any client - not Mainline,
-    -- not Classic - so the type check never passed and every install has been
-    -- taking the SetSize branch this whole time.
-    --
-    -- What Blizzard actually writes its record with is
-    -- SetChatWindowSavedDimensions, which is what FCF_SavePositionAndDimensions
-    -- calls. Persist() below goes through that, so the record is updated - the
-    -- dead branch was never the thing keeping it in step.
+    -- This used to prefer FCF_SetWindowSize over SetSize, to keep the client's
+    -- own record of the size in step. There is no FCF_SetWindowSize in FrameXML
+    -- on any client, so that check never passed and every install has taken this
+    -- branch anyway. The record is written by SetChatWindowSavedDimensions,
+    -- which FCF_SavePositionAndDimensions calls and Persist below goes through.
     if width > 0 and height > 0 then
         pcall(frame.SetSize, frame, width, height)
     end
 
     pcall(frame.SetUserPlaced, frame, true)
     pcall(frame.ClearAllPoints, frame)
-    pcall(frame.SetPoint, frame, point, _G.UIParent, point, x, y)
+    -- The recorded relative corner, falling back to the same corner for every
+    -- position written before that was stored - which is what the old code
+    -- assumed unconditionally, and what the settings page still means.
+    pcall(frame.SetPoint, frame, point, _G.UIParent, cfg.chatRelativePoint or point, x, y)
 
     Persist(frame)
 
@@ -168,43 +169,81 @@ function Position:Reapply()
 end
 
 --------------------------------------------------------------------------------
--- The login check
+-- Holding the position against the client
 --
--- Placement is a one-shot, and the client restores its own idea of a chat
--- window's geometry around the same moment - sometimes after us. Anything that
--- lands after the placement wins, because every later refresh returns early on
--- `placed`, and the window sits at a size nobody asked for until it is moved by
--- hand.
+-- The client re-lays its chat windows out several times during a login and on
+-- every dock change, so a placement that happens once is a race against the last
+-- of them. It used to be placed at login and then again a second later if the
+-- size did not match, which is both a guess at when the client has finished and
+-- the visible jump people describe as the chat snapping about after loading.
 --
--- So the size is read back once, a second after the world loads, and the
--- placement is redone only if what is on screen is not what the config asked
--- for. It is not enforcement: it runs once per login, compares before acting,
--- and anything the player does afterwards is theirs to keep.
+-- So it re-asserts, on the events that do the re-laying, which is what ElvUI
+-- does and the only thing that holds.
+--
+-- Re-asserting from a STALE config is how an addon takes away your ability to
+-- move your own chat, by snapping every drag back as you release it. Three
+-- things stop that here.
+--
+-- The config learns first. A drag or resize ends in
+-- FCF_SavePositionAndDimensions, which is hooked, so what gets re-asserted IS
+-- where you just put the window.
+--
+-- Nothing is applied mid-drag. MOVING_CHATFRAME and the grabber's button state
+-- both mean the geometry on screen is the player's hand - not something to
+-- enforce, and not something to learn from either. A re-assert landing mid-drag
+-- would snap the window back and then be captured as intentional, losing the
+-- drag for good.
+--
+-- And it is deferred a frame, which is what orders the two halves. Letting go
+-- runs FCF_StopDragging, which docks the frame - firing
+-- UPDATE_FLOATING_CHAT_WINDOWS synchronously, before anything is saved - and
+-- only then calls FCF_SavePositionAndDimensions. An undeferred re-assert would
+-- run off that event against the old position. A frame later, the save has been
+-- and the config already holds the new one.
 --------------------------------------------------------------------------------
 
-local CHECK_DELAY = 1
-local TOLERANCE = 2
-
-function Position:VerifySize()
-    local cfg = PC.Config
-    if not cfg or not cfg.enabled or not cfg.positionEnabled then return false end
-
-    local width = tonumber(cfg.chatWidth) or 0
-    local height = tonumber(cfg.chatHeight) or 0
-    if width <= 0 or height <= 0 then return false end
+-- True while the player has hold of the window. Checked rather than tracked: the
+-- client owns both of these and there is no event for either.
+function PlayerIsDragging()
+    if _G.MOVING_CHATFRAME then return true end
 
     local frame = DockLeader()
-    if not frame or InCombatLockdown() then return false end
-
-    local actualWidth = frame:GetWidth() or 0
-    local actualHeight = frame:GetHeight() or 0
-    if math.abs(actualWidth - width) <= TOLERANCE
-        and math.abs(actualHeight - height) <= TOLERANCE then
-        return false
+    local grabber = frame and frame.ResizeButton
+    if grabber and grabber.GetButtonState and grabber:GetButtonState() == "PUSHED" then
+        return true
     end
 
-    self:Reapply()
-    return true
+    return false
+end
+
+Position.PlayerIsDragging = PlayerIsDragging
+
+local reassertQueued = false
+
+-- Put the window back where the config says, however many times the client
+-- disturbs it. Safe to call on every event that might have: it coalesces to one
+-- pass per frame, does nothing while the window is being dragged, and re-applies
+-- the geometry the hook has already learned.
+function Position:Reassert()
+    local cfg = PC.Config
+    if not cfg or not cfg.enabled or not cfg.positionEnabled then return end
+    if reassertQueued then return end
+
+    reassertQueued = true
+
+    local function run()
+        reassertQueued = false
+        if PlayerIsDragging() then return end
+        if not PC.Config.enabled or not PC.Config.positionEnabled then return end
+
+        Position:Apply(nil, true)
+    end
+
+    if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+        _G.C_Timer.After(0, run)
+    else
+        run()
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -219,11 +258,18 @@ function Position:CaptureCurrent()
     local frame = DockLeader()
     if not frame then return false end
 
-    local point, _, _, x, y = frame:GetPoint()
+    local point, relativeTo, relativePoint, x, y = frame:GetPoint()
     if not point then return false end
+
+    -- Anchored to something that is not the screen - a dock, a temporary window,
+    -- another addon's holder. Replaying that as an offset from UIParent would put
+    -- the window somewhere it has never been, so the safe answer is to keep what
+    -- was already recorded rather than learn a position we cannot reproduce.
+    if relativeTo and relativeTo ~= _G.UIParent then return false end
 
     local cfg = PC.Config
     cfg.chatPoint = point
+    cfg.chatRelativePoint = relativePoint
     cfg.chatX = math.floor(x + 0.5)
     cfg.chatY = math.floor(y + 0.5)
     cfg.chatWidth = math.floor((frame:GetWidth() or 0) + 0.5)
@@ -263,26 +309,21 @@ function Position:Initialize()
             if placing then return end
             if not PC.Config.positionEnabled then return end
 
+            -- Never learn from a window that is still being held. The client
+            -- calls this from the drag and resize handlers after it has let go,
+            -- so in the normal case nothing is moving by now - but a third addon
+            -- calling it mid-drag would otherwise write a half-finished position
+            -- into the config as though it were intended.
+            if PlayerIsDragging() then return end
+
             -- Deliberately NOT "only if this is the dock leader", which is what
-            -- it used to say and which quietly dropped most resizes.
-            --
-            -- The resize grabber's OnMouseUp in FloatingChatFrame.xml sizes the
-            -- dock leader when the window is docked:
-            --
-            --     if self:GetParent().isDocked then
-            --         GENERAL_CHAT_DOCK.primary:StopMovingOrSizing()
-            --     ...
-            --     FCF_SavePositionAndDimensions(self:GetParent())
-            --
-            -- It resizes the leader and then reports the *child* whose grabber
-            -- was dragged. So resizing with any tab but the first one selected
-            -- arrived here as a frame that is not the leader, got dropped, and
-            -- was never written to the config - and the next login put the old
-            -- size back. Which is exactly what "it snaps to size every reload"
-            -- looks like from the outside.
-            --
-            -- A docked frame's geometry is the leader's, so either one is a
-            -- reason to go and read the leader.
+            -- it used to say and which quietly dropped most resizes. The resize
+            -- grabber's OnMouseUp in FloatingChatFrame.xml sizes the leader when
+            -- the window is docked and then reports the *child* whose grabber
+            -- was dragged - so resizing with any tab but the first selected
+            -- arrived here as a non-leader, got dropped, and the next login put
+            -- the old size back. A docked frame's geometry is the leader's, so
+            -- either one is a reason to go and read the leader.
             if not (Position:IsLeader(frame) or (frame and frame.isDocked)) then
                 return
             end
@@ -320,17 +361,32 @@ function Position:Initialize()
         end
     end
 
-    -- One look after the world has loaded, for the geometry the client restores
-    -- on its own timing rather than ours. Once per login, and only if what is on
-    -- screen disagrees with the config - see VerifySize.
-    local checked = false
-    PeaversCommons.Events:RegisterEvent("PLAYER_ENTERING_WORLD", function()
-        if checked then return end
-        checked = true
-        C_Timer.After(CHECK_DELAY, function()
-            Position:VerifySize()
+    ----------------------------------------------------------------------------
+    -- The events the client re-lays its chat windows on
+    --
+    -- This replaces a single look a second after login, which was a guess at
+    -- when the client would have finished and was visible as the window jumping
+    -- about once the world had loaded. These are the moments it actually moves
+    -- things, so the window is put back as part of the same frame rather than a
+    -- second later where somebody can watch it happen.
+    --
+    -- UPDATE_CHAT_WINDOWS and UPDATE_FLOATING_CHAT_WINDOWS are the client
+    -- re-reading its own chat settings, at login and whenever they change.
+    -- PLAYER_ENTERING_WORLD covers a reload and every zone in after it.
+    --
+    -- All three go through Reassert, which coalesces them to one pass, does
+    -- nothing while the window is in the player's hand, and re-applies what the
+    -- config has already learned rather than anything older.
+    ----------------------------------------------------------------------------
+    for _, event in ipairs({
+        "PLAYER_ENTERING_WORLD",
+        "UPDATE_CHAT_WINDOWS",
+        "UPDATE_FLOATING_CHAT_WINDOWS",
+    }) do
+        PeaversCommons.Events:RegisterEvent(event, function()
+            Position:Reassert()
         end)
-    end)
+    end
 
     -- Deferred work from a fight. Cheap: returns immediately unless something
     -- actually asked to be moved.
