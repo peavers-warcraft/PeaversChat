@@ -170,6 +170,28 @@ local function Apply(frame)
     end
 
     Position(editBox)
+
+    -- Blizzard's "im" chat style leaves the edit box on screen permanently,
+    -- faded to about a third alpha, rather than hiding it until you press Enter.
+    -- Its own nine-slice art reads as a hint at that alpha; a flat fill and a
+    -- hairline border read as an empty box somebody forgot to close. So the box
+    -- follows whether the edit box is being typed into, not whether it is shown.
+    --
+    -- Not client-specific, though WoW Forever is where it showed up: any client
+    -- set to "im" looked like this, and Forever is simply the one that defaults
+    -- to it - GetCVarDefault("chatStyle") is "im" there and "classic" on retail
+    -- and the Classic clients. In classic style the client hides the edit box
+    -- itself and these hooks never have anything left to do.
+    --
+    -- Focus rather than ChatEdit_ActivateChat/DeactivateChat because focus is
+    -- exactly the question being asked, and an EditBox always has these scripts.
+    if not editBox.__pcFocusHooked then
+        editBox.__pcFocusHooked = true
+        editBox:HookScript("OnEditFocusGained", function(self) EditBox:Repaint(self) end)
+        editBox:HookScript("OnEditFocusLost", function(self) Skin:HideBox(self) end)
+    end
+
+    if not editBox:HasFocus() then Skin:HideBox(editBox) end
 end
 
 local function Restore(frame)
@@ -218,7 +240,10 @@ function EditBox:InstallHooks()
     -- our anchor has to be re-asserted.
     if type(_G.ChatEdit_ActivateChat) == "function" then
         hooksecurefunc("ChatEdit_ActivateChat", function(editBox)
-            if editBox then Position(editBox) end
+            if editBox then
+                Position(editBox)
+                EditBox:Repaint(editBox)
+            end
         end)
     end
 end
