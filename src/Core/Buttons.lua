@@ -173,6 +173,77 @@ local function ButtonFrameFor(frame)
     return name and _G[name .. "ButtonFrame"] or nil
 end
 
+--------------------------------------------------------------------------------
+-- The gap a hidden scroll bar leaves behind
+--
+-- Hiding a frame does not make it narrow, and the client measures this one:
+--
+--     function FloatingChatFrame_UpdateBackgroundAnchors(self)
+--         local scrollbarWidth = 0
+--         if self.ScrollBar then scrollbarWidth = self.ScrollBar:GetWidth() end
+--         ...
+--         self.Background:SetPoint("TOPRIGHT", self, "TOPRIGHT", 2 + scrollbarWidth, ...)
+--         self:SetClampRectInsets(-35, 35 + scrollbarWidth, 38, -50)
+--
+-- So a scroll bar that is hidden but still its old width leaves the window's
+-- background reaching past its right edge by that much, and the clamp reserving
+-- the same strip again. Up against the right of the screen that is visible as
+-- the window sitting a scroll bar's width in from the edge - and as it jumping
+-- by that much whenever the client re-runs the function, which it does on
+-- leaving Edit Mode.
+--
+-- Zeroing the width is what makes the client's own arithmetic come out right,
+-- rather than another thing fighting it afterwards. The original is kept so
+-- switching the addon off gives the bar its size back along with its visibility.
+--------------------------------------------------------------------------------
+local COLLAPSED = 0.001
+
+local function SetScrollBarWidth(frame, collapsed)
+    local bar = frame.ScrollBar
+    if type(bar) ~= "table" or type(bar.SetWidth) ~= "function" then return end
+
+    -- Nothing to do is the common case by a long way: this runs on every
+    -- refresh, and the width only changes when the setting does. Returning here
+    -- keeps a steady state free rather than re-running the client's background
+    -- and clamp arithmetic once a second to arrive at the same numbers.
+    local width = tonumber(bar:GetWidth()) or 0
+    if collapsed then
+        if width <= COLLAPSED then return end
+    elseif bar.__pcWidth == nil then
+        return
+    end
+
+    if collapsed then
+        if bar.__pcWidth == nil then
+            bar.__pcWidth = width > 0 and width or false
+        end
+        -- Not zero: a frame with no width falls back to whatever its anchors
+        -- imply, which for this one is the height of the chat window. A hair
+        -- over nothing measures as nothing everywhere it matters.
+        pcall(bar.SetWidth, bar, COLLAPSED)
+    elseif bar.__pcWidth then
+        pcall(bar.SetWidth, bar, bar.__pcWidth)
+        bar.__pcWidth = nil
+    else
+        bar.__pcWidth = nil
+    end
+
+    -- Let the client redo its own background and clamp from the new width. Its
+    -- function, so the numbers stay Blizzard's and only the input changed.
+    if type(_G.FloatingChatFrame_UpdateBackgroundAnchors) == "function" then
+        pcall(_G.FloatingChatFrame_UpdateBackgroundAnchors, frame)
+
+        -- That call ends in SetClampRectInsets(-35, 35 + scrollbarWidth, ...),
+        -- so it puts a margin back even with the width down to nothing - the
+        -- 35 is there for the button strip whether or not the strip is shown.
+        -- Clearing it here rather than waiting for the next refresh is what
+        -- stops the window stepping away from the edge in between.
+        if Skin and Skin.ClearClampFor then
+            Skin.ClearClampFor(frame)
+        end
+    end
+end
+
 local function Apply(frame)
     local cfg = PC.Config
 
@@ -199,6 +270,9 @@ local function Apply(frame)
         SetHidden(buttonFrame,
             cfg.enabled and not cfg.showScrollButtons and not keepsBottom)
     end
+
+    -- After the hiding, so the width matches what is on screen.
+    SetScrollBarWidth(frame, cfg.enabled and not cfg.showScrollButtons)
 end
 
 local function Restore(frame)
@@ -212,6 +286,8 @@ local function Restore(frame)
         SetHidden(buttonFrame, false)
         Skin.ReviveChrome(buttonFrame)
     end
+
+    SetScrollBarWidth(frame, false)
 end
 
 --------------------------------------------------------------------------------

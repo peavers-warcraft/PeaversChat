@@ -616,6 +616,42 @@ local function ClearClamp(frame)
     if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then return end
     if type(frame.SetClampRectInsets) ~= "function" then return end
 
+    ----------------------------------------------------------------------------
+    -- Stop it being clamped at all, not just clamped by nothing
+    --
+    -- Zeroing the insets is a fair-weather fix, because the client puts its own
+    -- back. FloatingChatFrame_UpdateBackgroundAnchors ends in
+    --
+    --     self:SetClampRectInsets(-35, 35 + scrollbarWidth, 38, -50)
+    --
+    -- and runs on its own schedule - leaving Edit Mode is one. The moment that
+    -- lands, a window sitting against a screen edge is outside the rect it is
+    -- allowed to be in, and the client moves it. Clearing the insets afterwards
+    -- does not undo that: the window has already jumped.
+    --
+    -- So clamping goes off entirely, which is what ElvUI does one line below its
+    -- own SetClampRectInsets(0,0,0,0). An inset the client re-asserts cannot
+    -- shove a frame that is not being clamped.
+    --
+    -- Only under edgeToEdge, which is the setting that means "let it reach the
+    -- edge". The cost of an unclamped frame is that it can be dragged off
+    -- screen entirely, and that is a bad trade for somebody who never asked to
+    -- get closer to the edge than the client allows. Position re-asserts the
+    -- saved spot on every refresh, so a window that does get pushed out has a
+    -- way back.
+    ----------------------------------------------------------------------------
+    -- Latched, once per window per session, which the insets below deliberately
+    -- are not. The difference is that the client re-asserts the insets and does
+    -- not re-assert this: SetClampedToScreen appears nowhere in the chat code on
+    -- any client, because it is an XML attribute set when the frame is built and
+    -- never touched again. Nothing is going to turn it back on behind us, so
+    -- asking every refresh would be a client call a second to learn an answer
+    -- that cannot have changed.
+    if frame.__pcClamped == nil and type(frame.SetClampedToScreen) == "function" then
+        frame.__pcClamped = true
+        pcall(frame.SetClampedToScreen, frame, false)
+    end
+
     local left, right, top, bottom = CurrentClamp(frame)
 
     -- Remember the client's own margin the first time we see it, so switching
@@ -769,6 +805,17 @@ local function Restore(frame)
         pcall(frame.SetClampRectInsets, frame, clamp[1], clamp[2], clamp[3], clamp[4])
         frame.__pcClampCleared = nil
         frame.__pcClamp = nil
+    end
+
+    -- And clamping itself back on, if it was on before we switched it off.
+    -- Handing back the insets without this leaves a window that can still be
+    -- dragged off the screen and lost, which is not a state the client ever
+    -- puts a chat window in.
+    if frame.__pcClamped ~= nil then
+        if type(frame.SetClampedToScreen) == "function" then
+            pcall(frame.SetClampedToScreen, frame, frame.__pcClamped and true or false)
+        end
+        frame.__pcClamped = nil
     end
     Skin.ReviveChrome(frame)
 

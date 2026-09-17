@@ -345,11 +345,23 @@ function Position:Initialize()
     -- than where the margin allows.
     ----------------------------------------------------------------------------
     local function ClearClamps()
-        if not PC.Config.enabled or not PC.Config.edgeToEdge then return end
-        if not PC.Skin or not PC.Skin.ClearClampFor then return end
-        Frames:Each(function(frame)
-            PC.Skin.ClearClampFor(frame)
-        end)
+        if not PC.Config.enabled then return end
+
+        if PC.Config.edgeToEdge and PC.Skin and PC.Skin.ClearClampFor then
+            Frames:Each(function(frame)
+                PC.Skin.ClearClampFor(frame)
+            end)
+        end
+
+        -- And put the window back, because leaving Edit Mode is one of the
+        -- moments the client redoes its own background anchors - which ends in
+        -- SetClampRectInsets and can shove a window that was sitting against a
+        -- screen edge. Clearing the margin after the shove does not undo it; the
+        -- window has already moved, and only a re-place returns it.
+        --
+        -- Deferred through Reassert like every other one, so it lands after
+        -- whatever the client is in the middle of.
+        Position:Reassert()
     end
 
     PeaversCommons.Events:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", ClearClamps)

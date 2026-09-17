@@ -119,6 +119,15 @@ FrameMT.__index = function(_, key)
     if key == "IsShown" then return function(self) return self._shown end end
     if key == "GetAlpha" then return function(self) return self._alpha or 1 end end
     if key == "GetEffectiveScale" then return function() return 1 end end
+    -- Counted, both of them: the addon reads before it writes so that a frame
+    -- already unclamped is left alone, and the read is the client call that
+    -- makes the write avoidable.
+    if key == "IsClampedToScreen" then
+        return function(self) Count("IsClampedToScreen") return self._clamped and true or false end
+    end
+    if key == "SetClampedToScreen" then
+        return function(self, value) Count("SetClampedToScreen") self._clamped = value and true or false end
+    end
     if key == "GetWidth" then return function(self) Count("GetWidth") return self._width or 400 end end
     if key == "GetHeight" then return function(self) Count("GetHeight") return self._height or 180 end end
     if key == "GetFont" then return function() return "Fonts\\FRIZQT__.TTF", 14, "" end end
@@ -185,6 +194,13 @@ local function NewFrame(name, id, parent)
         _regions = {},
         _attributes = {},
         _buttonTextures = {},
+        -- Clamped, like every real frame starts. The addon reads this before it
+        -- writes, so a stub that could not answer measured a call per refresh
+        -- that the client never makes: without IsClampedToScreen there is no way
+        -- to know it is already unclamped, so it gets unclamped again every
+        -- second. The fixture has to be able to answer or it charges the addon
+        -- for work it does not do.
+        _clamped = true,
     }, FrameMT)
 
     createdFrames[#createdFrames + 1] = frame
