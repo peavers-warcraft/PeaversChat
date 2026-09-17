@@ -379,24 +379,6 @@ end
 --- Breathing room above the tab text, in pixels.
 local TEXT_MARGIN = 5
 
--- The top of the tab row, read once per sweep rather than once per window.
---
--- There is one dock and every window measures its strip against it, so reading
--- it per frame is the same geometry question asked as many times as there are
--- chat windows - and a geometry read is the kind the client resolves a layout to
--- answer. Keyed on the same generation the strip height itself is cached by.
-local dockTopGen, dockTopValue
-
-local function DockTop()
-    local generation = PC.Frames and PC.Frames.generation
-    if dockTopGen == generation and generation ~= nil then return dockTopValue end
-
-    local dock = _G.GeneralDockManager
-    dockTopValue = dock and dock.GetTop and dock:GetTop() or nil
-    dockTopGen = generation
-    return dockTopValue
-end
-
 --- How far above the chat frame the tab strip reaches.
 ---
 --- Measured off the tab rather than assumed, because where Blizzard puts the
@@ -419,39 +401,24 @@ local function MeasureStrip(frame)
 
     local frameTop = frame:GetTop()
 
-    -- Measure to the top of the tab row, not to the top of the word inside it.
-    --
-    -- It used to be the word, plus a margin, on the reasoning that Blizzard's
-    -- tab frame carries dead space above its text and covering that reads as too
-    -- much padding. True in isolation, and wrong against everything else: the
-    -- client sizes the chat system by the tab row, so a strip measured off the
-    -- glyphs is shorter than every other part of the interface believes the
-    -- window to be. Edit Mode is where that becomes visible - its selection box
-    -- is drawn around the system, so it stood a tab's worth of dead space proud
-    -- of the strip and the tabs looked like they were floating inside it.
-    --
-    -- The dock counts as well as the tab. The tabs sit inside GeneralDockManager
-    -- and the dock is what the client anchors above the window, so whichever
-    -- reaches higher is the top of the row as anything outside this addon
-    -- measures it.
-    local reach
-    local tabTop = tab:GetTop()
-    if tabTop and frameTop then reach = tabTop - frameTop end
-
-    local dockTop = DockTop()
-    if dockTop and frameTop then
-        local dockReach = dockTop - frameTop
-        if not reach or dockReach > reach then reach = dockReach end
-    end
-
-    if reach and reach >= 8 and reach <= 80 then return reach end
-
-    -- The word, for a build where the tab will not give up its geometry.
+    -- Measure to the top of the word, not the top of the tab. Blizzard's tab
+    -- frame carries a good deal of dead space above its text, and a strip drawn
+    -- to cover the frame covers that dead space too - which is exactly what
+    -- reads as too much padding above the tabs. TEXT_MARGIN is the breathing
+    -- room the word gets, and it is the only number here that is a taste
+    -- judgement rather than a measurement.
     local fontString = PC.Tabs and PC.Tabs.FontString and PC.Tabs.FontString(tab)
     local textTop = fontString and fontString.GetTop and fontString:GetTop()
     if textTop and frameTop then
-        local textReach = textTop - frameTop + TEXT_MARGIN
-        if textReach >= 8 and textReach <= 80 then return textReach end
+        local reach = textTop - frameTop + TEXT_MARGIN
+        if reach >= 8 and reach <= 80 then return reach end
+    end
+
+    -- The tab frame, for a build where the font string cannot be found.
+    local tabTop = tab:GetTop()
+    if tabTop and frameTop then
+        local reach = tabTop - frameTop
+        if reach >= 8 and reach <= 80 then return reach end
     end
 
     local height = tab.GetHeight and tab:GetHeight()
