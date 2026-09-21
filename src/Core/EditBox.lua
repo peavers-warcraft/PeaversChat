@@ -127,7 +127,7 @@ local function Apply(frame)
 
     local pad = Skin.Pad()
     local signature = table.concat({
-        cfg.fontSize, cfg.editBoxPosition or "bottom", cfg.editBoxHeight or 22,
+        cfg.fontSize, cfg.fontFace or "", cfg.editBoxPosition or "bottom", cfg.editBoxHeight or 22,
         pad.left, pad.right, pad.top, pad.bottom,
         cfg.altArrowKeys and 1 or 0, cfg.background and 1 or 0, cfg.border and 1 or 0,
         cfg.bgAlpha, cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b,
@@ -151,7 +151,9 @@ local function Apply(frame)
         local file, size, flags = editBox:GetFont()
         editBox.__pcFont = { file or _G.STANDARD_TEXT_FONT, size or 14, flags or "" }
     end
-    pcall(editBox.SetFont, editBox, editBox.__pcFont[1], cfg.fontSize, "")
+    -- Same face as the chat text: what you type should look like what it posts.
+    Skin.SetFace(editBox, Skin.Face(cfg.fontFace, editBox.__pcFont[1]), cfg.fontSize, "",
+        editBox.__pcFont[1])
 
     local header = HeaderFor(editBox)
     if header then
@@ -159,7 +161,8 @@ local function Apply(frame)
             local file, size, flags = header:GetFont()
             header.__pcFont = { file or _G.STANDARD_TEXT_FONT, size or 14, flags or "" }
         end
-        pcall(header.SetFont, header, header.__pcFont[1], cfg.fontSize, "")
+        Skin.SetFace(header, Skin.Face(cfg.fontFace, header.__pcFont[1]), cfg.fontSize, "",
+            header.__pcFont[1])
     end
 
     -- Blizzard reserves the arrow keys for chat history unless Alt is held.

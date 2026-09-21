@@ -53,6 +53,21 @@ EditMode.SECTIONS = {
 
 local function OnlyWhenPositioned(cfg) return not cfg.positionEnabled end
 
+-- Every font Commons knows about, LibSharedMedia's included, behind an entry
+-- that means "leave Blizzard's alone". A function rather than a list so a font
+-- another addon registers after this one loads still turns up.
+local function FontChoices()
+    local list = { { value = "", label = "Blizzard default" } }
+    local fonts = PeaversCommons.ConfigManager.GetFonts()
+    local sorted = {}
+    for path, name in pairs(fonts) do
+        sorted[#sorted + 1] = { value = path, label = tostring(name) }
+    end
+    table.sort(sorted, function(a, b) return a.label < b.label end)
+    for _, option in ipairs(sorted) do list[#list + 1] = option end
+    return list
+end
+
 EditMode.ENTRIES = {
     ----------------------------------------------------------------- frame ---
     {
@@ -157,6 +172,14 @@ EditMode.ENTRIES = {
 
     ------------------------------------------------------------------ text ---
     {
+        -- Spelled out rather than taken from the common fontFace entry, whose
+        -- fallback is the collection's display face: chat is read, not
+        -- glanced at, and an upgrade should not change anybody's chat font.
+        key = "fontFace", label = "Chat Font", kind = "dropdown", section = "text",
+        values = FontChoices, fallback = "",
+        desc = "Also used by the edit box. Includes fonts from LibSharedMedia.",
+    },
+    {
         key = "fontSize", label = "Font Size", kind = "slider", section = "text",
         min = 8, max = 24, step = 1, unit = "pt", default = 13,
     },
@@ -212,6 +235,11 @@ EditMode.ENTRIES = {
     {
         key = "tabFontSize", label = "Tab Font Size", kind = "slider", section = "tabs",
         min = 8, max = 20, step = 1, unit = "pt", default = 12,
+        hidden = function(cfg) return not cfg.styleTabs end,
+    },
+    {
+        key = "tabFont", label = "Tab Font", kind = "dropdown", section = "tabs",
+        values = FontChoices, fallback = "",
         hidden = function(cfg) return not cfg.styleTabs end,
     },
     {

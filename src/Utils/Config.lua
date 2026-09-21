@@ -98,6 +98,9 @@ local PC_DEFAULTS = {
     -- Text
     ----------------------------------------------------------------------------
     fontSize = 13,
+    -- Same rule as tabFont below: empty keeps Blizzard's chat font. Anything
+    -- else is a font file path, from the bundled faces or LibSharedMedia.
+    fontFace = "",
     fontOutline = "NONE",       -- "NONE" | "OUTLINE" | "THICKOUTLINE"
     shadow = true,
 
