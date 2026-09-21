@@ -696,6 +696,31 @@ Skin.ClearClampFor = ClearClamp
 -- Text
 --------------------------------------------------------------------------------
 
+--- The face to draw with: the chosen one, or the one the widget arrived with.
+--- Empty means Blizzard's, which is correct in every locale. The locale check is
+--- the reason this is not just a string swap: none of the Latin faces carry CJK
+--- glyphs, and applying one to a Chinese client renders empty boxes.
+function Skin.Face(chosen, original)
+    if chosen == nil or chosen == "" then return original end
+    local ConfigManager = _G.PeaversCommons and _G.PeaversCommons.ConfigManager
+    if ConfigManager and ConfigManager.IsFontCompatibleWithLocale
+        and not ConfigManager.IsFontCompatibleWithLocale(chosen) then
+        return original
+    end
+    return chosen
+end
+
+--- SetFont with a way back. A LibSharedMedia path for an addon that has since
+--- been uninstalled either throws or returns false depending on the build, and
+--- the false case leaves a blank line rather than an error - so both are read
+--- and the original face is put back at the requested size.
+function Skin.SetFace(widget, face, size, flags, original)
+    local ok, set = pcall(widget.SetFont, widget, face, size, flags)
+    if (not ok or set == false) and face ~= original then
+        pcall(widget.SetFont, widget, original, size, flags)
+    end
+end
+
 local function ApplyFont(frame)
     local cfg = PC.Config
 
@@ -707,9 +732,8 @@ local function ApplyFont(frame)
     local flags = cfg.fontOutline
     if flags == "NONE" or flags == nil then flags = "" end
 
-    -- SetFont is refused for a font file the client cannot resolve; keeping the
-    -- original around means a bad path costs the font change, not the frame.
-    pcall(frame.SetFont, frame, frame.__pcFont[1], cfg.fontSize, flags)
+    local original = frame.__pcFont[1]
+    Skin.SetFace(frame, Skin.Face(cfg.fontFace, original), cfg.fontSize, flags, original)
 
     if frame.SetShadowColor then
         frame:SetShadowColor(0, 0, 0, cfg.shadow and 1 or 0)
@@ -737,7 +761,7 @@ local function Apply(frame)
     ClearClamp(frame)
 
     local signature = table.concat({
-        cfg.fontSize, cfg.fontOutline or "", cfg.shadow and 1 or 0,
+        cfg.fontSize, cfg.fontFace or "", cfg.fontOutline or "", cfg.shadow and 1 or 0,
         cfg.fading and 1 or 0, cfg.timeVisible, cfg.maxLines or 0,
         cfg.edgeToEdge and 1 or 0,
     }, ":")

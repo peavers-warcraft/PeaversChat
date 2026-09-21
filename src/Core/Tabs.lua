@@ -32,8 +32,6 @@ local addonName, PC = ...
 local Tabs = {}
 PC.Tabs = Tabs
 
-local PeaversCommons = _G.PeaversCommons
-
 local Frames = PC.Frames
 local Skin = PC.Skin
 
@@ -168,22 +166,10 @@ function Tabs:Paint(tab)
         tab.__pcFont = { file or _G.STANDARD_TEXT_FONT, size or 12, flags or "" }
     end
 
-    -- A chosen face, or the one the tab arrived with. The locale check is the
-    -- reason this is not just a string swap: none of the Latin faces carry CJK
-    -- glyphs, and applying one to a Chinese client renders empty boxes. The
-    -- pcall then covers the other failure - a LibSharedMedia path for an addon
-    -- that has since been uninstalled - by leaving the font alone.
-    local face = cfg.tabFont
-    if face == "" or face == nil then
-        face = tab.__pcFont[1]
-    elseif PeaversCommons.ConfigManager.IsFontCompatibleWithLocale
-        and not PeaversCommons.ConfigManager.IsFontCompatibleWithLocale(face) then
-        face = tab.__pcFont[1]
-    end
-
-    if not pcall(fs.SetFont, fs, face, cfg.tabFontSize, tab.__pcFont[3]) then
-        pcall(fs.SetFont, fs, tab.__pcFont[1], cfg.tabFontSize, tab.__pcFont[3])
-    end
+    -- A chosen face, or the one the tab arrived with; see Skin.Face.
+    local original = tab.__pcFont[1]
+    Skin.SetFace(fs, Skin.Face(cfg.tabFont, original), cfg.tabFontSize,
+        tab.__pcFont[3], original)
 
     fs:SetTextColor(color.r, color.g, color.b)
     -- Blizzard drives the tab's colour through SetVertexColor on the font
