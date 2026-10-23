@@ -296,6 +296,11 @@ local function InstallHooks(frame)
     end
 end
 
+--- A texture this addon draws itself. The flag tells Skin's chrome sweeps to
+--- leave it alone.
+---@class PeaversChatOwnedTexture: Texture
+---@field __pcOwned boolean?
+
 local function Build(frame)
     -- Read once and counted from, rather than asked again for the thumb: the
     -- level of a frame that has just been given one is a question with a known
@@ -310,9 +315,10 @@ local function Build(frame)
 
     bar.__pcFrame = frame
 
-    bar.track = bar:CreateTexture(nil, "ARTWORK")
-    bar.track:SetAllPoints()
-    bar.track.__pcOwned = true
+    local track = bar:CreateTexture(nil, "ARTWORK") --[[@as PeaversChatOwnedTexture]]
+    track:SetAllPoints()
+    track.__pcOwned = true
+    bar.track = track
 
     local thumb = CreateFrame("Frame", nil, bar)
     thumb:SetFrameLevel(level + 1)
@@ -320,9 +326,10 @@ local function Build(frame)
     thumb:SetHeight(MIN_THUMB)
     thumb.__pcBar = bar
 
-    thumb.texture = thumb:CreateTexture(nil, "OVERLAY")
-    thumb.texture:SetAllPoints()
-    thumb.texture.__pcOwned = true
+    local texture = thumb:CreateTexture(nil, "OVERLAY") --[[@as PeaversChatOwnedTexture]]
+    texture:SetAllPoints()
+    texture.__pcOwned = true
+    thumb.texture = texture
 
     bar.thumb = thumb
 
