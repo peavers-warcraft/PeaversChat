@@ -422,7 +422,8 @@ function Tabs:InstallHooks()
         end)
     end
 
-    if not flashHooked and CanColorFlash() then
+    local startFn = not flashHooked and StartFn()
+    if startFn and CanColorFlash() then
         flashHooked = true
 
         -- The client calls this for every message arriving in a window that is
@@ -434,7 +435,7 @@ function Tabs:InstallHooks()
         -- is already flashing does not need to be told again, and the check is
         -- one field read against a repaint that could not help but allocate a
         -- string to work out it was going to change nothing.
-        hooksecurefunc(StartFn(), function(frame)
+        hooksecurefunc(startFn, function(frame)
             local tab = Frames:TabFor(frame)
             if not tab or tab.__pcFlashing then return end
 
