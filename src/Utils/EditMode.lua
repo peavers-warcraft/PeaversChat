@@ -26,9 +26,10 @@ PC.EditMode = EditMode
 --------------------------------------------------------------------------------
 
 function PC.ApplySetting()
-    -- The URL filter installs or removes itself to match the settings and
-    -- rebuilds its colour. Without this, switching it on here or picking a new
-    -- link colour did nothing until a reload.
+    -- Both message filters install or remove themselves to match the
+    -- settings, and the URL filter rebuilds its colour. Without this,
+    -- switching one on here did nothing until a reload.
+    if PC.GuildAds then PC.GuildAds:Sync() end
     if PC.Links then PC.Links:Refresh() end
     if PC.Channels then
         PC.Channels:Apply()
@@ -53,6 +54,7 @@ EditMode.SECTIONS = {
     { key = "buttons", label = "Buttons" },
     { key = "scrollbar", label = "Scroll Bar" },
     { key = "links", label = "Links And Copy" },
+    { key = "filters", label = "Filters" },
 }
 
 local function OnlyWhenPositioned(cfg) return not cfg.positionEnabled end
@@ -401,6 +403,17 @@ EditMode.ENTRIES = {
         key = "copyIconSize", label = "Copy Icon Size", kind = "slider", section = "links",
         min = 8, max = 20, step = 1, unit = "px", default = 11,
         hidden = function(cfg) return not cfg.copyButton end,
+    },
+
+    --------------------------------------------------------------- filters ---
+    {
+        key = "hideGuildAds", label = "Hide Guild Adverts", kind = "checkbox",
+        section = "filters", default = false,
+        desc = "Hides guild recruitment in public channels, say, yell and whispers "
+            .. "from strangers: any line with \"recruit\" or a <Guild Name> in it, and "
+            .. "adverts that read like one without. Friends, guildmates and your "
+            .. "group are never hidden. /pchat ads shows what went and why; "
+            .. "/pchat ads words edits the list.",
     },
 }
 
