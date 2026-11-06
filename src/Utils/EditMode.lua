@@ -26,6 +26,10 @@ PC.EditMode = EditMode
 --------------------------------------------------------------------------------
 
 function PC.ApplySetting()
+    -- The URL filter installs or removes itself to match the settings and
+    -- rebuilds its colour. Without this, switching it on here or picking a new
+    -- link colour did nothing until a reload.
+    if PC.Links then PC.Links:Refresh() end
     if PC.Channels then
         PC.Channels:Apply()
         PC.Channels:ApplyTimestamps()
