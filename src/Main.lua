@@ -44,6 +44,7 @@ local MINIMAL = {
     scrollBar = false,          -- no hooks on the client's scroll functions
     shortChannelNames = false,  -- the client's own channel wording
     urlLinks = false,           -- no filter on the client's chat events
+    hideGuildAds = false,       -- nor this one
     maxLines = 0,               -- the message buffer never reallocated
     edgeToEdge = false,         -- no protected function called or hooked
 
@@ -72,15 +73,17 @@ local TRY_GROUPS = {
         "showBottomButton", "showVoiceButtons", "showCombatLogBar",
     },
     links = { "urlLinks" },
+    ads = { "hideGuildAds" },
     channels = { "shortChannelNames" },
     buffer = { "maxLines" },
 }
 
-local TRY_ORDER = { "tabs", "buttons", "copy", "scrollbar", "editbox", "links", "channels", "buffer" }
+local TRY_ORDER = { "tabs", "buttons", "copy", "scrollbar", "editbox", "links", "ads", "channels", "buffer" }
 
 --- Re-apply everything after a settings change. The bisect commands all end
 --- here, so they cannot drift apart over which modules need telling.
 local function Refresh()
+    PC.GuildAds:Sync()
     PC.Links:Refresh()
     PC.Channels:Apply()
     PC.Buttons:Refresh()
@@ -98,6 +101,8 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Config:Save()
         PC.Channels:Apply()
         InstallHooks()
+        PC.GuildAds:Sync()
+        PC.Links:Sync()
         PC.Buttons:Refresh()
         PC.Frames:Refresh()
         Utils.Print(PC, "Chat skinned.")
@@ -107,6 +112,8 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         PC.Config:Save()
         PC.Channels:Restore()
         PC.Frames:Restore()
+        PC.GuildAds:Sync()
+        PC.Links:Sync()
         PC.Buttons:Refresh()
         Utils.Print(PC, "Chat handed back to Blizzard. /pchat enable turns it back on. "
             .. "A hook cannot be uninstalled, so reload for this to be exactly "
@@ -230,10 +237,7 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         cfg.minimalBackup = backup
         cfg:Save()
 
-        PC.Channels:Apply()
-        PC.Buttons:Refresh()
-        PC.Frames:Refresh()
-        PC.Tabs:PaintAll()
+        Refresh()
 
         if restored == 0 then
             Utils.Print(PC, group .. " was already back on.")
@@ -261,10 +265,9 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
 
         cfg:Save()
 
-        PC.Channels:Apply()
-        PC.Buttons:Refresh()
-        PC.Frames:Refresh()
-        PC.Tabs:PaintAll()
+        -- Through Refresh, so the message filters come off with everything
+        -- else rather than staying registered and declining to act.
+        Refresh()
 
         Utils.Print(PC, leaving
             and "Everything back on."
@@ -274,11 +277,11 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
                 .. "/pchat minimal again puts it all back.")
     end,
     safe = function()
-        -- Channel abbreviations are the only thing left that changes what a
-        -- chat line says, so this is now the whole of "stop altering my chat".
-        -- A toggle, because a diagnostic you cannot undo is a trap.
+        -- Everything that touches an incoming line: the URL filter, the guild
+        -- advert filter, and the channel abbreviations. A toggle, because a
+        -- diagnostic you cannot undo is a trap.
         local cfg = PC.Config
-        local goingSafe = cfg.urlLinks or cfg.shortChannelNames
+        local goingSafe = cfg.urlLinks or cfg.shortChannelNames or cfg.hideGuildAds
 
         cfg.urlLinks = not goingSafe
         cfg.shortChannelNames = not goingSafe
@@ -286,14 +289,48 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
 
         PC.Links:Resume()
         PC.Links:Sync()
+
+        -- Put back as it was, not switched on: the advert filter is off by
+        -- default, and two presses of a diagnostic must not turn on a feature
+        -- somebody never chose.
+        if goingSafe then
+            cfg.guildAdsBeforeSafe = cfg.hideGuildAds and true or false
+            PC.GuildAds:SetEnabled(false)
+        else
+            PC.GuildAds:SetEnabled(cfg.guildAdsBeforeSafe == true)
+            cfg.guildAdsBeforeSafe = nil
+            cfg:Save()
+        end
         if cfg.shortChannelNames then PC.Channels:Apply() else PC.Channels:Restore() end
 
+        local stillOn = PC.Links:IsInstalled() or PC.GuildAds:IsInstalled()
         Utils.Print(PC, goingSafe
-            and string.format("Safe mode on. URL filter %s, channel wording is the client's own. "
+            and string.format("Safe mode on. Message filters %s, channel wording is the client's own. "
                 .. "Nothing this addon does now touches an incoming message.",
-                PC.Links:IsInstalled() and "STILL INSTALLED - this build cannot remove it"
+                stillOn and "STILL INSTALLED - this build cannot remove them"
                     or "removed from every chat event")
             or "Safe mode off.")
+    end,
+    ads = function(rest)
+        local verb, word = tostring(rest or ""):match("^%s*(%S*)%s*(.-)%s*$")
+        verb = (verb or ""):lower()
+
+        if verb == "" then
+            PC.GuildAds:Show()
+        elseif verb == "on" or verb == "off" then
+            PC.GuildAds:SetEnabled(verb == "on")
+            Utils.Print(PC, verb == "on"
+                and "Hiding guild adverts. /pchat ads shows what was hidden."
+                or "Guild adverts are shown again. /pchat ads on hides them.")
+        elseif verb == "words" or verb == "list" then
+            PC.GuildAds:ListWords()
+        elseif verb == "add" then
+            PC.GuildAds:AddWord(word)
+        elseif verb == "remove" or verb == "delete" then
+            PC.GuildAds:RemoveWord(word)
+        else
+            Utils.Print(PC, "Usage: /pchat ads [on | off | words | add <word> | remove <word>]")
+        end
     end,
     trace = function(rest)
         -- Counts chat events on a frame of our own, outside the filter system,
@@ -352,6 +389,8 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         end
         cfg:Save()
 
+        PC.GuildAds:Sync()
+        PC.Links:Refresh()
         PC.Channels:Apply()
         PC.Channels:ApplyTimestamps()
         PC.Buttons:Refresh()
@@ -370,10 +409,14 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         Utils.Print(PC, "Chat windows reset to the client's own layout, then reskinned.")
     end,
     info = function()
-        Utils.Print(PC, string.format("%d chat window(s) skinned. Clickable URLs: %s. Copy button: %s.",
+        Utils.Print(PC, string.format("%d chat window(s) skinned. Clickable URLs: %s. Copy button: %s. "
+            .. "Guild adverts: %s.",
             PC.Frames:Count(),
             PC.Config.urlLinks and "on" or "off",
-            PC.Config.copyButton and "on" or "off"))
+            PC.Config.copyButton and "on" or "off",
+            PC.Config.hideGuildAds
+                and string.format("%d hidden this session", PC.GuildAds:Count())
+                or "shown"))
     end,
     debug = function()
         PC.Config.debugMode = not PC.Config.debugMode
@@ -386,6 +429,10 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
         print("  /pchat - Open settings")
         print("  /pchat copy - Copy the chat window on top")
         print("  /pchat buttons - Show or hide every button at once")
+        print("  /pchat ads - Show the guild adverts hidden this session, and why")
+        print("  /pchat ads on | off - Hide guild adverts, or stop")
+        print("  /pchat ads words - The words that hide a line on their own")
+        print("  /pchat ads add <word> | remove <word> - Edit that list; * matches anything")
         print("  /pchat minimal - Toggle down to just a background and a font")
         print("  /pchat without <group> - Take one group away, cumulatively, to find a culprit")
         print("  /pchat try <group> - Hand one group back while minimal")
@@ -462,6 +509,9 @@ PeaversCommons.Events:Init(addonName, function()
     PC.EditBox:Initialize()
     PC.Buttons:Initialize()
     PC.ScrollBar:Initialize()
+    -- Before Links, so its filter is registered first and an advert is dropped
+    -- before the URL matcher spends anything on it.
+    PC.GuildAds:Initialize()
     PC.Links:Initialize()
     PC.Copy:Initialize()
     -- Registers a Frames handler, so it must come before Frames:Initialize()

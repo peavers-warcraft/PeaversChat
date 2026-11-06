@@ -28,6 +28,7 @@ src\Core\EditBox.lua
 src\Core\Buttons.lua
 src\Core\ScrollBar.lua
 src\Core\Links.lua
+src\Core\GuildAds.lua
 src\Core\Copy.lua
 src\Core\Channels.lua
 src\Core\Diagnostics.lua

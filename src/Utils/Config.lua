@@ -191,6 +191,22 @@ local PC_DEFAULTS = {
     urlBrackets = true,
 
     ----------------------------------------------------------------------------
+    -- Guild adverts
+    --
+    -- Off. A filter that hides other people's messages is not something anybody
+    -- should find switched on by an update: a line that never arrives cannot
+    -- tell you it was hidden. Switched on from the settings page or with
+    -- /pchat ads on, and once on, nothing it hides is lost - /pchat ads lists
+    -- every line it took and why, and the first time it hides one it says so.
+    --
+    -- The words hide a line on their own, before any of the evidence rules are
+    -- consulted. "<*>" is any name in angle brackets.
+    ----------------------------------------------------------------------------
+    hideGuildAds = false,
+    guildAdWords = { "recruit", "<*>" },
+    guildAdsNoticed = false,
+
+    ----------------------------------------------------------------------------
     -- Copy
     ----------------------------------------------------------------------------
     copyButton = true,

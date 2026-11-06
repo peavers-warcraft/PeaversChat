@@ -318,6 +318,21 @@ _G.STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 _G.ChatFontNormal = {}
 _G.SetCVar = function() Count("SetCVar") end
 
+-- Who a sender is to you. Counted, every one: these are the client calls the
+-- guild advert filter makes, and it may only make them for a line that has
+-- already read as an advert. Nobody here is a friend unless a test says so.
+local friendGUID = nil
+_G.GetCVar = function() Count("GetCVar") return "inline" end
+_G.UnitGUID = function() Count("UnitGUID") return "Player-1-00000001" end
+_G.IsGuildMember = function() Count("IsGuildMember") return false end
+_G.IsGUIDInGroup = function() Count("IsGUIDInGroup") return false end
+_G.C_FriendList = {
+    IsFriend = function(guid) Count("IsFriend") return guid == friendGUID end,
+}
+_G.C_BattleNet = {
+    GetGameAccountInfoByGUID = function() Count("GetGameAccountInfoByGUID") return nil end,
+}
+
 _G.NUM_CHAT_WINDOWS = 3
 
 _G.ChatTypeInfo = {
@@ -476,6 +491,10 @@ PC.Config = {
     shortChannelNames = true,
     shortChannelNamesWithdrawn = true,
     timestamps = "%H:%M ",
+    hideGuildAds = true,
+    guildAdWords = { "recruit", "<*>" },
+    -- Already told, so the one-time notice does not print into the harness.
+    guildAdsNoticed = true,
     debugMode = false,
     Save = function() end,
 }
@@ -491,6 +510,7 @@ Load("Core/EditBox.lua")
 Load("Core/Buttons.lua")
 Load("Core/ScrollBar.lua")
 Load("Core/Links.lua")
+Load("Core/GuildAds.lua")
 Load("Core/Copy.lua")
 Load("Core/Channels.lua")
 
@@ -509,6 +529,7 @@ PC.Tabs:Initialize()
 PC.EditBox:Initialize()
 PC.Buttons:Initialize()
 PC.ScrollBar:Initialize()
+PC.GuildAds:Initialize()
 PC.Links:Initialize()
 PC.Copy:Initialize()
 
@@ -531,6 +552,9 @@ assert(chatFrames[1].__pcAddMessage == nil,
 assert(_G.ChatFrame_MessageEventHandler == blizzardHandler,
     "the client's chat handler was replaced - the documented seam is a message filter")
 assert(PC.Links:IsInstalled(), "the URL filter was never installed")
+assert(PC.GuildAds:IsInstalled(), "the guild advert filter was never installed")
+assert(filters.CHAT_MSG_CHANNEL[1] ~= filters.CHAT_MSG_CHANNEL[2] and #filters.CHAT_MSG_CHANNEL == 2,
+    "expected exactly the two message filters on public channels")
 assert(_G.CHAT_GUILD_GET:find("%[G%]"), "channel names were not abbreviated")
 assert(_G.ChatFrameMenuButton:IsShown() == false, "the menu button is still on screen")
 assert(dock.peaversCopyButton:IsShown(), "the copy button is hidden")
@@ -581,21 +605,162 @@ local SAMPLE = {
 
 local MESSAGES_PER_SECOND = 10
 
-local messageFilter = filters.CHAT_MSG_CHANNEL[1]
+-- What the client does with its filters: each in turn, stopping at the first
+-- that discards the line, and handing the next one whatever the last rewrote.
+-- Measuring one filter on its own would miss the other, and both are on the
+-- path of every line.
+local lineID = 0
+
+local function Deliver(frame, event, msg, opts)
+    opts = opts or {}
+    lineID = lineID + 1
+    local args = {
+        msg, opts.author or "Stranger-Realm", "Common", opts.channel or "2. Trade - City",
+        "", opts.flags or "", 2, 2, opts.base or "Trade - City", 0,
+        opts.lineID or lineID, opts.guid or "Player-1-0000BEEF",
+    }
+
+    for _, filter in ipairs(filters[event] or {}) do
+        local results = { filter(frame, event, unpack(args, 1, 12)) }
+        if results[1] then return true end
+        if results[2] then
+            for i = 1, 12 do args[i] = results[i + 1] end
+        end
+    end
+    return false, args[1]
+end
 
 Stubs.ResetCounts()
 for i = 1, 400 do
-    messageFilter(chatFrames[1], "CHAT_MSG_CHANNEL",
-        SAMPLE[((i - 1) % #SAMPLE) + 1], "Peavers", "Common", "5. LookingForGroup")
+    Deliver(chatFrames[1], "CHAT_MSG_CHANNEL", SAMPLE[((i - 1) % #SAMPLE) + 1])
 end
 local perMessage = Stubs.TotalCalls() / 400
 
+-- The headline claim, asserted: an ordinary line costs the client nothing, with
+-- both filters on its path.
+assert(perMessage == 0,
+    ("%.2f client calls per ordinary chat line - something on the message path started asking the client"):format(perMessage))
+
 do
-    local _, rewritten = messageFilter(chatFrames[1], "CHAT_MSG_CHANNEL",
-        "see www.example.com", "Peavers")
+    local _, rewritten = Deliver(chatFrames[1], "CHAT_MSG_CHANNEL", "see www.example.com")
     assert(rewritten and rewritten:find("|Hurl:", 1, true),
         "the filter is installed but is not linking anything")
 end
+
+--------------------------------------------------------------------------------
+-- Guild adverts
+--
+-- Two questions: does it hide what it says it hides and nothing else, and what
+-- does a hidden line cost. The second is not zero - the client is asked who the
+-- sender is to you - and the point is that it is only ever asked about a line
+-- that has already read as an advert.
+--------------------------------------------------------------------------------
+
+local ADVERTS = {
+    "<Ascend> is recruiting for Mythic progression! Raid times Wed/Thu 8-11pm ST. /w for info",
+    "|cffffd100|HclubFinder:ClubFinder-1-1234-5678-12345678|h[Guild: Chill Vibes]|h|r Join us for M+ and raids!",
+    "Looking for a new home? <Night Owls> is a social guild with weekly raids. All levels welcome!",
+    "Need 9 signatures for my guild charter, will pay 1g each!",
+    "LF more raiders for our AOTC team, Tue/Thu 9-12 server time. PST for invite",
+    "GUILD RECRUITING!!! LEVELING GUILD, ALL WELCOME, WHISPER FOR INVITE",
+    "Hey! Our guild is looking for active players to join our community, we do M+ and raids. Want an invite?",
+    "Semi-hardcore guild LF dps for Mythic raiding. Raid times Tue/Thu 8-11 EST. Discord required.",
+    "|cff66bbff|HclubTicket:abc123|h[Join: Keystone Heroes]|h|r Community for M+ pushers, all welcome, join now!",
+    "Inviting new and returning players to Phoenix Rising, 7/8N, raid fri/sat",
+    "Midnight Sun is a newly formed guild LF members of all levels",
+    "Die Gilde <Nachtwache> rekrutiert! Raid Mi/Do 20-23 Uhr",
+    -- Hidden by the word list alone, which is what the list is for.
+    "Is <Ascend> still recruiting?",
+    "Any guilds recruiting? 645 dk tank LF CE guild",
+}
+
+local ORDINARY = {
+    "LF tank for +12 Ara-Kara, need 1 more",
+    "LFM HC raid need 2 heals, 620+ ilvl, w/ me",
+    "LF guild, 640 resto shaman, looking for AOTC raiding",
+    "my guild just killed queen ansurek lets gooo",
+    "WTS Boost M+ 10 keys, cheap, /w",
+    "how do i leave a guild?",
+    "recruit a friend anyone? need someone to level with",
+    "LFM Heroic Nerub-ar Palace pug, 5/8, need tank, raid starts 8pm ST",
+    "where do I buy a guild charter?",
+    "<3 thanks guys",
+    "Our guild is doing a transmog run tonight, anyone want to join us?",
+    "guild bank tab is bugged for anyone else?",
+    "LF raiding guild for me and my friend, we're both 640",
+}
+
+for _, line in ipairs(ADVERTS) do
+    assert(Deliver(chatFrames[1], "CHAT_MSG_CHANNEL", line) == true, "advert not hidden: " .. line)
+end
+for _, line in ipairs(ORDINARY) do
+    assert(Deliver(chatFrames[1], "CHAT_MSG_CHANNEL", line) == false, "ordinary line hidden: " .. line)
+end
+
+-- The evidence rules on their own, with the word list emptied: the last two
+-- adverts above are there only because of the list, and must come back.
+do
+    local words = PC.Config.guildAdWords
+    PC.Config.guildAdWords = {}
+    assert(not PC.GuildAds:IsAdvert("Is <Ascend> still recruiting?"),
+        "an empty word list still hid a question about a guild")
+    assert(PC.GuildAds:IsAdvert(ADVERTS[8]), "the evidence rules missed an advert with no listed word in it")
+    PC.Config.guildAdWords = words
+end
+
+-- People you know are never hidden, nor a channel that exists for this.
+do
+    friendGUID = "Player-1-0000F00D"
+    assert(Deliver(chatFrames[1], "CHAT_MSG_CHANNEL", ADVERTS[1], { guid = friendGUID }) == false,
+        "a friend's guild advert was hidden")
+    friendGUID = nil
+
+    assert(Deliver(chatFrames[1], "CHAT_MSG_CHANNEL", ADVERTS[1],
+        { channel = "4. GuildRecruitment - City", base = "GuildRecruitment - City" }) == false,
+        "an advert in the GuildRecruitment channel was hidden")
+
+    assert(Deliver(chatFrames[1], "CHAT_MSG_SAY", ADVERTS[1], { flags = "GM" }) == false,
+        "a GM was hidden")
+
+    assert(Deliver(chatFrames[1], "CHAT_MSG_WHISPER", ADVERTS[7]) == true,
+        "an inline whisper advert from a stranger was not hidden")
+
+    local inline = _G.GetCVar
+    _G.GetCVar = function() return "popout" end
+    assert(Deliver(chatFrames[1], "CHAT_MSG_WHISPER", ADVERTS[7]) == false,
+        "a whisper was hidden while whispers open their own tab, leaving it empty")
+    _G.GetCVar = inline
+end
+
+-- Delivered to three windows, judged and logged once.
+do
+    local before = PC.GuildAds:Count()
+    for i = 1, 3 do
+        assert(Deliver(chatFrames[i], "CHAT_MSG_CHANNEL", ADVERTS[1], { lineID = 999999 }) == true,
+            "the second and third window were shown a line the first hid")
+    end
+    assert(PC.GuildAds:Count() == before + 1,
+        ("one line in three windows was logged %d times"):format(PC.GuildAds:Count() - before))
+end
+
+-- Trade on a busy evening: one line in five an advert, every advert from a
+-- stranger, which is the expensive case.
+local TRADE = {
+    SAMPLE[1], SAMPLE[2], ADVERTS[1], SAMPLE[3], SAMPLE[4],
+    SAMPLE[5], ADVERTS[6], SAMPLE[6], SAMPLE[7], SAMPLE[8],
+}
+
+Stubs.ResetCounts()
+local tradeHidden = 0
+for i = 1, 400 do
+    if Deliver(chatFrames[1], "CHAT_MSG_CHANNEL", TRADE[((i - 1) % #TRADE) + 1]) then
+        tradeHidden = tradeHidden + 1
+    end
+end
+local perTradeLine = Stubs.TotalCalls() / 400
+local perAdvert = Stubs.TotalCalls() / tradeHidden
+
+assert(tradeHidden == 80, ("%d of 400 trade lines hidden, expected 80"):format(tradeHidden))
 
 --------------------------------------------------------------------------------
 -- A big pull
@@ -738,6 +903,15 @@ return {
         notes = string.format(
             "%.2f client calls per message: the matcher is pure string work and never touches a widget",
             perMessage),
+    },
+    {
+        name = "trade chat, 10 lines/sec, 1 in 5 a guild advert",
+        callsPerFrame = 0,
+        callsPerSecond = perTradeLine * MESSAGES_PER_SECOND,
+        idleCallsPerSecond = 0,
+        notes = string.format(
+            "%.0f client calls per hidden advert, asking who the sender is to you; none for any other line",
+            perAdvert),
     },
     {
         name = "switching tabs, 1/sec",

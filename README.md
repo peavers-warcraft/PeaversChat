@@ -13,8 +13,8 @@ It is meant to be finished out of the box. Install it and chat already looks the
 
 Chat is the one part of the UI that never stops. Every line that arrives goes
 through whatever filters are installed on it, and on a busy raid night that is
-hundreds a minute — so the claim worth testing is that **a chat message costs
-the client nothing at all**.
+hundreds a minute — so the claim worth testing is that **an ordinary chat
+message costs the client nothing at all**.
 
 The table below is where that is checked rather than asserted, and the case
 behind it also fails the build if the client's own chat handler is ever replaced
@@ -55,7 +55,8 @@ Scenarios driven against the real addon source, outside the game:
 
 The zeroes are the point, so they are worth explaining:
 
-- **A chat message costs nothing.** The URL matcher is pure string work, and it bails on a plain substring search before any pattern matching unless the line contains a dot or an at-sign. It never touches a widget, which is why the per-message figure is a flat zero rather than a small number.
+- **A chat message costs nothing.** The URL matcher is pure string work, and it bails on a plain substring search before any pattern matching unless the line contains a dot or an at-sign. The guild advert filter is the same: a handful of plain searches, and nothing more unless the line mentions something an advert would. Neither touches a widget, which is why the per-message figure is a flat zero rather than a small number — and the case fails the build if it ever is not.
+- **A hidden advert costs four questions.** Once a line has read as an advert, the client is asked whether its sender is a friend, a Battle.net friend, a guildmate or in your group, because those are never hidden. That is the only client call anywhere on the message path, and it is only ever made for a line that is about to be hidden. Each line is judged once, however many chat windows it is delivered to.
 - **Nothing repaints per chat line.** The client calls `FCF_StartAlertFlash` for every message arriving in a window that is not on screen — every combat-log line during a pull. Both hooks on that path decide they have nothing to do in a single field read, and the case fails the build if that ever regresses: 3000 combat-log lines cause one repaint, and 3000 dock updates cause none.
 - **Nothing runs per frame.** There is no `OnUpdate` installed anywhere in the addon and nothing on a timer. The skin is re-asserted from the events that disturb it — docking, the options panel, a loading screen — not from a ticker checking whether anything moved. The single exception is while you physically drag the optional scroll bar's thumb: that handler goes on at mouse-down and comes off at mouse-up, which is why the hunt below still finds none.
 - **The skin is built once.** One backdrop frame per window carrying five textures — a fill and four hairline edges — created the first time the window is seen and afterwards only recoloured and re-anchored.
@@ -72,6 +73,7 @@ than anybody switches tabs.
 - A flat black chat window with a 1px hairline border, matching the rest of the Peavers UI
 - Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading, in a font of your choosing
 - Clickable URLs, with a matcher careful enough not to turn "ok.thanks" into a link
+- Optional guild recruitment filter for Trade, General, LookingForGroup, say, yell and stranger whispers — off until you switch it on, with a list of everything it hid, and why, one command away
 - Tabs sit inside the window: the background reaches up over the tab strip rather than stopping underneath it
 - Tabs stay readable instead of fading out when the mouse is elsewhere
 - A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
@@ -96,15 +98,52 @@ Out of the box every button around the chat frame is hidden except the one that 
 - `/pchat` - Open settings
 - `/pchat copy` - Copy the chat window on top
 - `/pchat buttons` - Show or hide every button at once
+- `/pchat ads` - Show the guild adverts hidden this session, and why
+- `/pchat ads on` / `/pchat ads off` - Hide guild adverts, or stop
+- `/pchat ads words` - The words that hide a line on their own
+- `/pchat ads add <word>` / `/pchat ads remove <word>` - Edit that list; `*` matches anything
 - `/pchat enable` / `/pchat disable` - Turn the addon on, or hand chat back to Blizzard
 - `/pchat reset` - Reset the chat layout to the client's own, then reskin it
-- `/pchat safe` - Toggle the channel abbreviations off, so nothing changes what a line says
+- `/pchat safe` - Toggle off everything that touches an incoming line: the URL filter, the guild advert filter and the channel abbreviations
 - `/pchat info` - Print what is currently skinned
 - `/pchat style` - Show where each window's background is drawn
 - `/pchat channels` - Show what was changed in the channel format strings
 - `/pchat trace` - Count chat events as they arrive, then report
 - `/pchat defaults` - Put every setting back to its shipped default
 <!-- /peavers:usage -->
+
+### Guild adverts
+
+Off by default — a filter that hides other people's messages should be chosen,
+not arrive with an update. Switch it on under **Filters** in the settings or with
+`/pchat ads on`. Public channels, say, yell and whispers from strangers are then
+read for guild recruitment, and a line goes one of two ways:
+
+- **A word on the list.** Out of the box that is `recruit` — which catches
+  recruiting and recruitment — and `<*>`, which is any name in angle brackets,
+  the way every guild writes its own. Either one hides the line by itself.
+  `/pchat ads add` and `/pchat ads remove` edit the list, and `*` matches
+  anything, so `lf* raiders` is one entry.
+- **Enough evidence.** "Semi-hardcore guild LF dps for Mythic, raid times
+  Tue/Thu, Discord required" uses no listed word, so a line is also read for
+  different kinds of evidence — the word guild, asking for members, a weekly
+  raid schedule, progression, the guild talking about itself as "we" — and goes
+  when enough of them turn up together. No one of them is enough alone, because
+  each on its own is ordinary chat: "my guild killed Queen" has the word guild,
+  and a pug LFM has a start time. A Guild Finder link or a request to sign a
+  charter goes on sight.
+
+Never hidden: yourself, friends, Battle.net friends, guildmates, your group and
+GMs. Classic's GuildRecruitment channel is left alone, because joining it is
+asking for exactly this. Guild, officer, party, raid, instance and community
+chat are not read at all. Whispers are only filtered while they arrive inline:
+with whispers set to open in their own tab, the client opens that tab before any
+filter runs, and an empty tab named after a stranger is worse than the advert.
+
+Nothing disappears unseen. The first time a line is hidden, chat says so, and
+`/pchat ads` opens every line hidden this session in the copy window with the
+evidence that hid it — so something hidden by mistake can be found, and the word
+that caught it taken off the list.
 
 ### Copying
 

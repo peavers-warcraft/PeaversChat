@@ -24,6 +24,7 @@ function ConfigUI:BuildInfoPage(parentFrame)
         { command = "/pchat", desc = "open the settings" },
         { command = "/pchat copy", desc = "copy the chat window on top" },
         { command = "/pchat buttons", desc = "show or hide every button at once" },
+        { command = "/pchat ads", desc = "see the guild adverts that were hidden, and why" },
         { command = "/pchat disable", desc = "hand chat back to Blizzard" },
 
         { header = "Clickable URLs" },
@@ -33,6 +34,20 @@ function ConfigUI:BuildInfoPage(parentFrame)
             "achievement and colour run the client can emit; and a bare host " ..
             "with no scheme and no path has to end in a top-level domain the " ..
             "addon recognises. That is what stops \"ok.thanks\" turning blue.",
+
+        { header = "Guild adverts" },
+        "Off until you switch it on, under Filters or with /pchat ads on. Then " ..
+            "recruitment spam is hidden in public channels, say, yell and whispers " ..
+            "from strangers. Any line containing a word on the list goes - out of " ..
+            "the box that is \"recruit\", and \"<*>\", which is any name in angle " ..
+            "brackets - and so does one that reads like an advert without them: " ..
+            "the word guild, asking for members, a weekly raid schedule, the guild " ..
+            "calling itself \"we\". Guild Finder links and charter signature " ..
+            "requests go on sight. Friends, guildmates, your group and GMs are " ..
+            "never hidden, and Classic's GuildRecruitment channel is left alone " ..
+            "because joining it is asking for exactly this. /pchat ads lists every " ..
+            "line hidden this session with the reason; /pchat ads add and remove " ..
+            "edit the word list, where * matches anything.",
 
         { header = "Copying" },
         "The game has no clipboard API. The only way text leaves WoW is through " ..
@@ -62,9 +77,10 @@ function ConfigUI:BuildInfoPage(parentFrame)
             "moment you are dragging the scroll bar's thumb. The skin is " ..
             "built once per window and afterwards only recoloured; hidden " ..
             "buttons cost one OnShow handler that fires when the client was " ..
-            "going to show them anyway; and a chat message costs one plain " ..
-            "string search, which bails before doing any pattern work unless the " ..
-            "message contains a dot or an at-sign.",
+            "going to show them anyway; and a chat message costs a few plain " ..
+            "string searches, which bail before doing any pattern work unless the " ..
+            "line contains a dot, an at-sign, or something an advert would. Who " ..
+            "sent a line is only looked up once it has already read as an advert.",
     }, {
         title = "the chat frame",
         select = "the chat frame",
