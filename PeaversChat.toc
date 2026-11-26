@@ -1,7 +1,7 @@
 ## Interface: 11509, 16001, 20506, 50504, 120001, 120005, 120007, 120100, 120105
 
 ## Title: |cff3abdf7Peavers|rChat
-## Notes: A flat black chat window with clean text tabs, clickable URLs, a copy button, and every piece of Blizzard chrome around the frame made optional
+## Notes: A flat dark chat window with boxed tabs, clickable URLs, a copy button, and every piece of Blizzard chrome around the frame made optional
 ## Author: Peavers
 ## Version: 1.0.11
 

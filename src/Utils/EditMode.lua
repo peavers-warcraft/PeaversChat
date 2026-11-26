@@ -87,21 +87,26 @@ EditMode.ENTRIES = {
     },
     {
         key = "bgColor", label = "Background Colour", kind = "color", section = "frame",
-        default = { r = 0.086, g = 0.086, b = 0.086 },
+        default = { r = 0.03, g = 0.045, b = 0.05 },
         hidden = function(cfg) return not cfg.background end,
     },
     {
         key = "bgAlpha", label = "Background Opacity", kind = "slider", section = "frame",
-        min = 0, max = 1, step = 0.02, unit = "percent", default = 0.60,
+        min = 0, max = 1, step = 0.02, unit = "percent", default = 1,
         hidden = function(cfg) return not cfg.background end,
     },
     {
         key = "border", label = "Show A Border", kind = "checkbox", section = "frame",
-        default = true, revealsOthers = true,
+        default = false, revealsOthers = true,
     },
     {
         key = "borderColor", label = "Border Colour", kind = "color", section = "frame",
-        default = { r = 0.176, g = 0.176, b = 0.176 },
+        default = { r = 1, g = 1, b = 1 },
+        hidden = function(cfg) return not cfg.border end,
+    },
+    {
+        key = "borderAlpha", label = "Border Opacity", kind = "slider", section = "frame",
+        min = 0.02, max = 1, step = 0.02, unit = "percent", default = 0.10,
         hidden = function(cfg) return not cfg.border end,
     },
     {
@@ -116,7 +121,7 @@ EditMode.ENTRIES = {
     -------------------------------------------------------------- position ---
     {
         key = "positionEnabled", label = "Pin To A Fixed Spot", kind = "checkbox",
-        section = "position", default = false, revealsOthers = true,
+        section = "position", default = true, revealsOthers = true,
         desc = "Off leaves the chat frame to Edit Mode, which then moves and "
             .. "sizes it like any other frame.",
     },
@@ -131,24 +136,24 @@ EditMode.ENTRIES = {
         },
     },
     { key = "chatX", label = "X Offset", kind = "number", section = "position",
-      default = 0, hidden = OnlyWhenPositioned },
+      default = 10, hidden = OnlyWhenPositioned },
     { key = "chatY", label = "Y Offset", kind = "number", section = "position",
-      default = 22, hidden = OnlyWhenPositioned },
+      default = 33, hidden = OnlyWhenPositioned },
     {
         key = "chatWidth", label = "Width", kind = "number", section = "position",
-        default = 0, hidden = OnlyWhenPositioned,
+        default = 508, hidden = OnlyWhenPositioned,
         desc = "Zero keeps whatever width the frame already has.",
     },
     {
         key = "chatHeight", label = "Height", kind = "number", section = "position",
-        default = 0, hidden = OnlyWhenPositioned,
+        default = 181, hidden = OnlyWhenPositioned,
         desc = "Zero keeps whatever height the frame already has.",
     },
 
     --------------------------------------------------------------- padding ---
     {
         key = "paddingSplit", label = "Set Each Edge Separately", kind = "checkbox",
-        section = "padding", default = false, revealsOthers = true,
+        section = "padding", default = true, revealsOthers = true,
     },
     {
         key = "padding", label = "Padding", kind = "slider", section = "padding",
@@ -157,22 +162,22 @@ EditMode.ENTRIES = {
     },
     {
         key = "paddingLeft", label = "Left", kind = "slider", section = "padding",
-        min = 0, max = 30, step = 1, unit = "px", default = 8,
+        min = 0, max = 30, step = 1, unit = "px", default = 7,
         hidden = function(cfg) return not cfg.paddingSplit end,
     },
     {
         key = "paddingRight", label = "Right", kind = "slider", section = "padding",
-        min = 0, max = 30, step = 1, unit = "px", default = 6,
+        min = 0, max = 30, step = 1, unit = "px", default = 5,
         hidden = function(cfg) return not cfg.paddingSplit end,
     },
     {
         key = "paddingTop", label = "Top", kind = "slider", section = "padding",
-        min = 0, max = 30, step = 1, unit = "px", default = 6,
+        min = 0, max = 30, step = 1, unit = "px", default = 5,
         hidden = function(cfg) return not cfg.paddingSplit end,
     },
     {
         key = "paddingBottom", label = "Bottom", kind = "slider", section = "padding",
-        min = 0, max = 30, step = 1, unit = "px", default = 6,
+        min = 0, max = 30, step = 1, unit = "px", default = 5,
         hidden = function(cfg) return not cfg.paddingSplit end,
     },
 
@@ -187,7 +192,7 @@ EditMode.ENTRIES = {
     },
     {
         key = "fontSize", label = "Font Size", kind = "slider", section = "text",
-        min = 8, max = 24, step = 1, unit = "pt", default = 13,
+        min = 8, max = 24, step = 1, unit = "pt", default = 12,
     },
     {
         -- Three-way here, not the tick most addons store, so the outline is
@@ -239,8 +244,16 @@ EditMode.ENTRIES = {
         section = "tabs", default = true, revealsOthers = true,
     },
     {
+        key = "tabStyle", label = "Tab Style", kind = "dropdown", section = "tabs",
+        fallback = "boxed", hidden = function(cfg) return not cfg.styleTabs end,
+        values = {
+            { value = "boxed", label = "A box for each tab" },
+            { value = "text", label = "The name alone" },
+        },
+    },
+    {
         key = "tabFontSize", label = "Tab Font Size", kind = "slider", section = "tabs",
-        min = 8, max = 20, step = 1, unit = "pt", default = 12,
+        min = 8, max = 20, step = 1, unit = "pt", default = 10,
         hidden = function(cfg) return not cfg.styleTabs end,
     },
     {
@@ -261,13 +274,30 @@ EditMode.ENTRIES = {
     },
     {
         key = "tabUppercase", label = "Uppercase Tab Names", kind = "checkbox",
-        section = "tabs", default = true,
+        section = "tabs", default = false,
         hidden = function(cfg) return not cfg.styleTabs end,
     },
     {
         key = "tabUnderline", label = "Underline The Selected Tab", kind = "checkbox",
-        section = "tabs", default = true,
+        section = "tabs", default = true, revealsOthers = true,
         hidden = function(cfg) return not cfg.styleTabs end,
+    },
+    {
+        key = "tabUnderlineColorMode", label = "Underline Colour", kind = "dropdown",
+        section = "tabs", fallback = "class", revealsOthers = true,
+        hidden = function(cfg) return not cfg.styleTabs or not cfg.tabUnderline end,
+        values = {
+            { value = "accent", label = "Accent colour" },
+            { value = "class", label = "Class colour" },
+            { value = "custom", label = "Custom colour" },
+        },
+    },
+    {
+        key = "tabUnderlineColor", label = "Custom Underline Colour", kind = "color",
+        section = "tabs", default = { r = 1, g = 1, b = 1 },
+        hidden = function(cfg)
+            return not cfg.styleTabs or not cfg.tabUnderline or cfg.tabUnderlineColorMode ~= "custom"
+        end,
     },
     {
         key = "tabTextColor", label = "Tab Text Colour", kind = "color", section = "tabs",
@@ -300,6 +330,14 @@ EditMode.ENTRIES = {
         },
     },
     {
+        key = "editBoxAttached", label = "Join It To The Chat Frame", kind = "checkbox",
+        section = "editbox", default = true,
+        desc = "No gap: the edit box shares the frame's bottom edge.",
+        hidden = function(cfg)
+            return not cfg.styleEditBox or (cfg.editBoxPosition or "bottom") ~= "bottom"
+        end,
+    },
+    {
         key = "editBoxHeight", label = "Height", kind = "slider", section = "editbox",
         min = 14, max = 40, step = 1, unit = "px", default = 22,
         hidden = function(cfg) return not cfg.styleEditBox end,
@@ -311,7 +349,7 @@ EditMode.ENTRIES = {
     },
     {
         key = "altArrowKeys", label = "Alt With Arrow Keys Moves The Cursor",
-        kind = "checkbox", section = "editbox", default = false,
+        kind = "checkbox", section = "editbox", default = true,
     },
 
     --------------------------------------------------------------- buttons ---

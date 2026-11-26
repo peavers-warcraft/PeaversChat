@@ -2,8 +2,8 @@
 -- Tabs
 --
 -- Blizzard's chat tab is nine textures and a gold blink. This turns it into a
--- word: uppercase, grey when it is not the tab you are reading, white with an
--- accent underline when it is.
+-- flat box with a word in it (or, in the "text" style, just the word): grey when
+-- it is not the tab you are reading, white with an accent line when it is.
 --
 -- Two things about chat tabs make them fiddlier than they look.
 --
@@ -102,6 +102,145 @@ local function IsSelected(frame)
     return frame == Frames:Selected()
 end
 
+--------------------------------------------------------------------------------
+-- Boxed tabs
+--
+-- Each tab is its own translucent box sitting on the window's top edge: the
+-- tabs you are not reading are a lighter fill, the one you are reading has the
+-- window's full opacity, a faint outline and the accent line along its foot.
+--
+-- Anchored edge by edge: sides to the tab, top to its word, foot to the chat
+-- window. Where Blizzard's tab frame ends relative to the window is not ours to
+-- know, so it is never measured; the layout engine works it out. A selection
+-- change is two calls per tab - the fill, and one SetShown for the outline and
+-- accent line, which share a child frame for that reason.
+--------------------------------------------------------------------------------
+
+local BOX_PADDING = 12      -- either side of the word
+local BOX_SPACING = 1       -- between neighbouring tabs
+local BOX_TEXT_MARGIN = 4   -- above the word
+local INACTIVE_SHARE = 0.68 -- an unselected tab's fill, against the window's
+local EDGE_BOOST = 1.8      -- the selected tab's outline, against the window's
+
+--- The selected tab's line: the accent, your class colour, or one of your own.
+--- The player's own class is never secret, so this is safe in any content.
+local function UnderlineColor()
+    local cfg = PC.Config
+    local mode = cfg.tabUnderlineColorMode
+    if mode == "custom" and cfg.tabUnderlineColor then return cfg.tabUnderlineColor end
+    if mode == "class" then
+        local _, class = UnitClass("player")
+        local color = class and ((_G.C_ClassColor and _G.C_ClassColor.GetClassColor
+            and _G.C_ClassColor.GetClassColor(class))
+            or (_G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[class]))
+        if color then return color end
+    end
+    return cfg.accentColor
+end
+
+local function BoxSignature(tab)
+    local cfg = PC.Config
+    local bg, border, accent = cfg.bgColor, cfg.borderColor, UnderlineColor()
+    return table.concat({
+        bg.r, bg.g, bg.b, cfg.bgAlpha, border.r, border.g, border.b, cfg.borderAlpha or 1,
+        accent.r, accent.g, accent.b,
+        cfg.background and 1 or 0, cfg.border and 1 or 0, cfg.tabUnderline and 1 or 0,
+        cfg.tabsInside and 1 or 0, cfg.paddingTop or 6, Skin.Hairline(tab),
+    }, ",")
+end
+
+local function EnsureTabBox(tab)
+    if tab.peaversTabBox then return tab.peaversTabBox end
+
+    local box = {}
+    box.bg = tab:CreateTexture(nil, "BACKGROUND", nil, -8)
+    box.bg.__pcOwned = true
+
+    local deco = CreateFrame("Frame", nil, tab)
+    deco:SetAllPoints(tab)
+    box.deco = deco
+
+    for _, part in ipairs({ "top", "left", "right", "line" }) do
+        box[part] = deco:CreateTexture(nil, "OVERLAY")
+        box[part].__pcOwned = true
+    end
+
+    tab.peaversTabBox = box
+    return box
+end
+
+local function LayoutTabBox(tab, frame, box)
+    local cfg = PC.Config
+    local px = Skin.Hairline(tab)
+    local fs = TabText(tab)
+
+    -- With the strip behind them the tabs stand on the line under the tab row,
+    -- which is the frame's own top. Without it they stand on the window box,
+    -- which the padding has pushed up above the frame.
+    local base = cfg.tabsInside and 0 or (cfg.paddingTop or 6)
+
+    local bg = box.bg
+    bg:ClearAllPoints()
+    bg:SetPoint("LEFT", tab, "LEFT", 0, 0)
+    bg:SetPoint("RIGHT", tab, "RIGHT", -BOX_SPACING, 0)
+    bg:SetPoint("TOP", fs, "TOP", 0, BOX_TEXT_MARGIN)
+    if frame then
+        bg:SetPoint("BOTTOM", frame, "TOP", 0, base)
+    else
+        bg:SetPoint("BOTTOM", tab, "BOTTOM", 0, 0)
+    end
+    bg:SetShown(cfg.background and true or false)
+
+    local top, left, right, line = box.top, box.left, box.right, box.line
+
+    top:ClearAllPoints()
+    top:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
+    top:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
+    top:SetHeight(px)
+
+    left:ClearAllPoints()
+    left:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, -px)
+    left:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
+    left:SetWidth(px)
+
+    right:ClearAllPoints()
+    right:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, -px)
+    right:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
+    right:SetWidth(px)
+
+    line:ClearAllPoints()
+    line:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", px, 0)
+    line:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", -px, 0)
+    line:SetHeight(px * 2)
+
+    local border = cfg.borderColor
+    local edgeAlpha = math.min(1, (cfg.borderAlpha or 1) * EDGE_BOOST)
+    for _, edge in ipairs({ top, left, right }) do
+        edge:SetColorTexture(border.r, border.g, border.b, edgeAlpha)
+        edge:SetShown(cfg.border and true or false)
+    end
+
+    local accent = UnderlineColor()
+    line:SetColorTexture(accent.r, accent.g, accent.b, 1)
+    line:SetShown(cfg.tabUnderline and true or false)
+end
+
+local function PaintBox(tab, frame, signature, selected)
+    local box = EnsureTabBox(tab)
+
+    if box.signature ~= signature or box.frame ~= frame then
+        box.signature = signature
+        box.frame = frame
+        LayoutTabBox(tab, frame, box)
+    end
+
+    local cfg = PC.Config
+    local bg = cfg.bgColor
+    local alpha = cfg.bgAlpha * (selected and 1 or INACTIVE_SHARE)
+    box.bg:SetColorTexture(bg.r, bg.g, bg.b, alpha)
+    box.deco:SetShown(selected and true or false)
+end
+
 --- Colour, size and lay out one tab. Idempotent: this is the whole visual state
 --- of a tab, recomputed, not a diff applied to it.
 function Tabs:Paint(tab)
@@ -129,6 +268,10 @@ function Tabs:Paint(tab)
     local wanted = name
     if wanted and wanted ~= "" and cfg.tabUppercase then wanted = wanted:upper() end
 
+    local boxed = Skin.BoxedTabs()
+    local boxSig = boxed and BoxSignature(tab) or ""
+    local line = UnderlineColor()
+
     -- Everything below this line is a client call, and clicking one tab
     -- repaints the whole row - four of five tabs looking exactly as they did.
     -- The two that changed, the one you left and the one you arrived at, are
@@ -137,7 +280,8 @@ function Tabs:Paint(tab)
         name or "", selected and 1 or 0, tab.__pcFlashing and 1 or 0,
         cfg.tabFontSize, cfg.tabUppercase and 1 or 0, cfg.tabUnderline and 1 or 0,
         cfg.tabFont or "", color.r, color.g, color.b,
-        cfg.accentColor.r, cfg.accentColor.g, cfg.accentColor.b,
+        cfg.accentColor.r, cfg.accentColor.g, cfg.accentColor.b, boxSig,
+        line.r, line.g, line.b,
     }, ":")
 
     -- The signature says what was last asked for. It cannot say what is
@@ -185,12 +329,23 @@ function Tabs:Paint(tab)
     local resized = false
     local width = fs:GetStringWidth()
     if width and width > 0 then
-        local target = width + 20
+        local target = width + (boxed and BOX_PADDING * 2 or 20)
         if tab.__pcWidth ~= target then
             tab.__pcWidth = target
             tab:SetWidth(target)
             resized = true
         end
+    end
+
+    if boxed then
+        PaintBox(tab, frame, boxSig, selected)
+        if tab.peaversUnderline then tab.peaversUnderline:Hide() end
+        return resized
+    end
+    if tab.peaversTabBox then
+        tab.peaversTabBox.bg:Hide()
+        tab.peaversTabBox.deco:Hide()
+        tab.peaversTabBox.signature = nil
     end
 
     -- The underline is the whole selected-state affordance, so it is the one
@@ -206,7 +361,7 @@ function Tabs:Paint(tab)
     underline:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 6, 2)
     underline:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -6, 2)
     underline:SetHeight(Skin.Hairline(tab))
-    underline:SetColorTexture(cfg.accentColor.r, cfg.accentColor.g, cfg.accentColor.b, 1)
+    underline:SetColorTexture(line.r, line.g, line.b, 1)
     underline:SetShown(cfg.tabUnderline and selected)
 
     return resized
@@ -352,6 +507,11 @@ local function Restore(frame)
     end
 
     if tab.peaversUnderline then tab.peaversUnderline:Hide() end
+    if tab.peaversTabBox then
+        tab.peaversTabBox.bg:Hide()
+        tab.peaversTabBox.deco:Hide()
+        tab.peaversTabBox.signature = nil
+    end
 
     local fs = TabText(tab)
     if fs and tab.__pcFont then
@@ -379,22 +539,11 @@ function Tabs:InstallHooks()
     if hooksInstalled then return end
     hooksInstalled = true
 
-    -- Selection changed: repaint. Each is guarded because chat is one of the
-    -- areas Blizzard reworks, and a missing global should cost the repaint
-    -- trigger rather than the addon.
-    --
-    -- The important word is *changed*. FCFTab_UpdateColors is not a
-    -- selection-changed event - the client calls it from the dock's own update
-    -- path, which an arriving message is enough to dirty, so in a busy instance
-    -- it runs constantly. Repainting on every call meant walking every window,
-    -- resolving its tab and building a string to compare against the last one,
-    -- over and over, to conclude nothing had changed. That is the same mistake
-    -- as the alert-flash hook and it deserves the same answer: find out there is
-    -- nothing to do before doing anything.
-    --
-    -- One comparison. Everything else that can change a tab's appearance - a
-    -- rename, a flash starting or stopping, a settings change - has its own
-    -- trigger and does not come through here.
+    -- Selection changed: repaint. The important word is *changed*:
+    -- FCFTab_UpdateColors runs from the dock's update path, which an arriving
+    -- message dirties, so in a busy instance it runs constantly. One comparison
+    -- decides there is nothing to do; renames, flashes and settings changes
+    -- have triggers of their own.
     local lastSelected = nil
 
     for _, fname in ipairs({ "FCFTab_UpdateColors", "FCF_SelectDockFrame", "FCF_Tab_OnClick" }) do

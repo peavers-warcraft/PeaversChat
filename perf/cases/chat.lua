@@ -439,10 +439,11 @@ local PC = {}
 PC.Config = {
     enabled = true,
     background = true,
-    bgColor = { r = 0.086, g = 0.086, b = 0.086 },
-    bgAlpha = 0.60,
+    bgColor = { r = 0.03, g = 0.045, b = 0.05 },
+    bgAlpha = 0.65,
     border = true,
-    borderColor = { r = 0.176, g = 0.176, b = 0.176 },
+    borderColor = { r = 1, g = 1, b = 1 },
+    borderAlpha = 0.10,
     paddingLeft = 8,
     paddingRight = 6,
     paddingTop = 6,
@@ -459,14 +460,16 @@ PC.Config = {
     tabFont = "",
     tabsInside = true,
     tabStripHeight = 0,
-    tabUppercase = true,
+    tabStyle = "boxed",
+    tabUppercase = false,
     tabUnderline = true,
-    tabTextColor = { r = 0.580, g = 0.580, b = 0.580 },
+    tabTextColor = { r = 0.650, g = 0.650, b = 0.650 },
     tabSelectedColor = { r = 1, g = 1, b = 1 },
     accentColor = { r = 0.506, g = 0.549, b = 0.973 },
     styleEditBox = true,
     editBoxPosition = "bottom",
     editBoxHeight = 22,
+    editBoxAttached = true,
     altArrowKeys = false,
     editBoxChannelColor = true,
     showMenuButton = false,
@@ -544,7 +547,7 @@ local loginCalls = Stubs.TotalCalls()
 assert(PC.Frames:Count() == 3, "the sweep adopted " .. PC.Frames:Count() .. " windows, expected 3")
 assert(chatFrames[1].peaversBox, "ChatFrame1 was never skinned")
 assert(dock.peaversStrip, "the tab strip background was never drawn on the dock")
-assert(chatTabs[1].peaversUnderline, "the tab was never restyled")
+assert(chatTabs[1].peaversTabBox, "the tab was never restyled")
 assert(chatFrames[1].editBox.peaversBox, "the edit box was never skinned")
 assert(dock.peaversCopyButton, "the copy button was never built on the strip host")
 assert(chatFrames[1].__pcAddMessage == nil,

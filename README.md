@@ -3,7 +3,7 @@
 [![Ultra Performance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/peavers-warcraft/PeaversChat/master/.github/badges/perf.json)](https://github.com/peavers-warcraft/PeaversChat/actions/workflows/perf.yml)
 [![AddonSentry](https://addonsentry.io/api/public/repos/peavers-warcraft/PeaversChat/badge.svg)](https://addonsentry.io/dashboard/peavers-warcraft/PeaversChat)
 
-A World of Warcraft addon that redraws the chat window as a flat black box with clean text tabs, puts a copy button where you can see it, and hides every piece of chrome Blizzard hangs around the frame.
+A World of Warcraft addon that redraws the chat window as a flat dark panel with boxed tabs, puts a copy button where you can see it, and hides every piece of chrome Blizzard hangs around the frame.
 
 Part of the **Peavers Ultra Performance** family: addons that hold themselves to a published budget, measured on every push.
 
@@ -71,16 +71,17 @@ than anybody switches tabs.
 ## Features
 
 <!-- peavers:features -->
-- A flat black chat window with a 1px hairline border, matching the rest of the Peavers UI
-- Clean text tabs: no textures, no gold blink, an accent underline on the tab you are reading, in a font of your choosing
+- A flat dark chat window, with an optional faint 1px hairline border, matching the rest of the Peavers UI
+- Boxed tabs: no textures, no gold blink, a line under the tab you are reading in your class colour, the accent or a colour of your own, in a font of your choosing. Plain text tabs are one setting away
 - Clickable URLs, with a matcher careful enough not to turn "ok.thanks" into a link
 - Optional guild recruitment filter for Trade, General, LookingForGroup, say, yell and stranger whispers — off until you switch it on, with a list of everything it hid, and why, one command away
 - Tabs sit inside the window: the background reaches up over the tab strip rather than stopping underneath it
 - Tabs stay readable instead of fading out when the mouse is elsewhere
+- The window is placed before it is drawn: its spot and size are written into your Edit Mode layout, so it does not load in one place and jump to another
 - A copy mark in the corner of every chat window, costing no layout at all, and a copy window that strips colours, icons and link wrappers back out
 - Every button around the frame — chat menu, group finder, scroll arrows, voice, combat log bar — individually hideable, and hidden by default
 - An optional flat scroll bar down the right edge, off by default, and shown only while you hover the window when it is on
-- The edit box moved out from under the last line of chat, with a border coloured by the channel you are about to speak in
+- The edit box moved out from under the last line of chat and joined to the foot of the window, with a line coloured by the channel you are about to speak in
 - Arrow keys that move the cursor rather than scrolling chat history
 - 1000 lines of history kept instead of Blizzard's 128, so the copy button has something to copy
 - Adjustable font, size, outline, opacity, padding and colours
@@ -92,7 +93,7 @@ than anybody switches tabs.
 <!-- peavers:usage -->
 Chat is skinned as soon as you log in. Everything else is optional and lives in the settings, under `/pchat`.
 
-Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are uppercase text with an accent underline, URLs are clickable, and there is a small copy mark in the top-right corner of each window — faint until you hover the window, and it takes no space of its own.
+Out of the box every button around the chat frame is hidden except the one that jumps to the newest message, the tabs are boxes with a class-coloured line under the selected one, the chat window sits in the bottom-left corner, URLs are clickable, and there is a small copy mark in the top-right corner of each window — faint until you hover the window, and it takes no space of its own.
 
 ### Slash Commands
 
