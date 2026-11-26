@@ -8,9 +8,10 @@
 --
 -- The defaults are the product. The brief for this addon was "out of the box
 -- quality with a few tweak points", so a fresh install is already the finished
--- look: a flat #161616 box, text tabs with an accent underline, every piece of
--- Blizzard's chrome around the frame gone, URLs clickable, and a copy button
--- where you can see it. Nothing below needs touching to get there.
+-- look: a translucent slate panel with a faint hairline, boxed tabs with an
+-- accent line under the one you are reading, the input box attached to the
+-- foot of the window, every piece of Blizzard's chrome around the frame gone,
+-- URLs clickable, and a copy button where you can see it. Nothing below needs touching to get there.
 --------------------------------------------------------------------------------
 
 local addonName, PC = ...
@@ -29,33 +30,39 @@ local PC_DEFAULTS = {
     --
     -- Colours are spelled out rather than read from PeaversCommons.Theme so that
     -- a future reskin of the config UI does not silently restyle everybody's
-    -- chat window. The hairline is the config UI's #2d2d2d; the fill is the flat
-    -- black PeaversUnitFrames paints its frames with, so a screen running both
-    -- reads as one surface rather than two nearly-matching dark greys.
+    -- chat window. The fill is a cool near-black slate rather than pure black,
+    -- which reads as a surface rather than a hole; the hairline is white at a
+    -- tenth of its strength, which reads as an edge on any background.
     --
-    -- 0.6 alpha rather than the config UI's 0.97: chat sits over the world for
+    -- 0.65 alpha rather than the config UI's 0.97: chat sits over the world for
     -- hours at a time, and a fully opaque slab in the corner of the screen is a
     -- different thing from an opaque settings panel you open for a minute.
+    --
+    -- A saved setting shadows its default forever, so changing these only
+    -- changes fresh installs. The keys that are new in style version 2 are set
+    -- to the old look for anybody upgrading; see Main.lua.
     ----------------------------------------------------------------------------
     background = true,
-    bgColor = { r = 0, g = 0, b = 0 },
-    bgAlpha = 0.60,
-    border = true,
-    borderColor = { r = 0.176, g = 0.176, b = 0.176 },
+    bgColor = { r = 0.03, g = 0.045, b = 0.05 },
+    bgAlpha = 1,
+    border = false,
+    borderColor = { r = 1, g = 1, b = 1 },
+    borderAlpha = 0.10,
+    styleVersion = 2,
     -- Padding is per side. How much room the text wants from the border differs
     -- by edge: the left is where every line starts and is the one you actually
     -- read against, the right is ragged, the top sits under a tab row and the
     -- bottom over an edit box.
-    paddingLeft = 8,
-    paddingRight = 6,
-    paddingTop = 6,
-    paddingBottom = 6,
+    paddingLeft = 7,
+    paddingRight = 5,
+    paddingTop = 5,
+    paddingBottom = 5,
 
     -- Legacy. Read once to seed the four above for anybody upgrading, then
     -- never again. Kept in the defaults so migration has something to read on a
     -- profile that predates the split.
     padding = 6,
-    paddingSplit = false,
+    paddingSplit = true,
 
     -- Blizzard gives every chat window a clamping inset, which is why dragging
     -- one to the left of the screen stops short against nothing you can see.
@@ -70,14 +77,12 @@ local PC_DEFAULTS = {
     ----------------------------------------------------------------------------
     -- Where the window sits
     --
-    -- Off by default. A chat window is the piece of the interface people have
-    -- most often already arranged to their own taste, and an addon that moves it
-    -- on upgrade because it now can has taken something away. Switched on from
-    -- the settings page, or by a UI pack layout chosen on purpose.
+    -- On for fresh installs only: a saved setting shadows its default, so an
+    -- upgrade never starts moving a window somebody already arranged.
     --
     -- Only the dock leader is placed; docked windows follow it.
     ----------------------------------------------------------------------------
-    positionEnabled = false,
+    positionEnabled = true,
     chatPoint = "BOTTOMLEFT",
     -- The corner of the screen `chatPoint` is measured from. Stored because
     -- GetPoint returns it and an anchor does not round-trip without it: a window
@@ -86,18 +91,18 @@ local PC_DEFAULTS = {
     -- second when the first was captured moves it a screen height. nil means the
     -- same corner, which is what every position written before this existed
     -- meant and what the settings page still writes.
-    chatRelativePoint = nil,
-    chatX = 0,
-    chatY = 22,
+    chatRelativePoint = "BOTTOMLEFT",
+    chatX = 10,
+    chatY = 33,
     -- 0 means "leave the size alone", which is what somebody who wants the
     -- window moved but not resized is asking for.
-    chatWidth = 0,
-    chatHeight = 0,
+    chatWidth = 508,
+    chatHeight = 181,
 
     ----------------------------------------------------------------------------
     -- Text
     ----------------------------------------------------------------------------
-    fontSize = 13,
+    fontSize = 12,
     -- Same rule as tabFont below: empty keeps Blizzard's chat font. Anything
     -- else is a font file path, from the bundled faces or LibSharedMedia.
     fontFace = "",
@@ -118,23 +123,28 @@ local PC_DEFAULTS = {
     -- Tabs
     ----------------------------------------------------------------------------
     styleTabs = true,
-    tabFontSize = 12,
+    tabFontSize = 10,
 
     -- Empty means "whatever font the tab already had", which is Blizzard's and
     -- is correct in every locale. A chosen font is only applied when the client
     -- can render the locale with it.
-    tabFont = "",
+    tabFont = "Fonts\\ARIALN.TTF",
 
     -- The window's background reaches up over the tab strip, so the tabs sit
     -- inside the box rather than balanced on top of it. 0 measures how far the
     -- tabs actually reach; anything else overrides that measurement.
     tabsInside = true,
     tabStripHeight = 0,
-    tabUppercase = true,
+    -- "boxed" gives every tab a box of its own; "text" is the word alone.
+    tabStyle = "boxed",
+    tabUppercase = false,
     tabUnderline = true,
     tabTextColor = { r = 0.580, g = 0.580, b = 0.580 },
     tabSelectedColor = { r = 1.000, g = 1.000, b = 1.000 },
     accentColor = { r = 0.506, g = 0.549, b = 0.973 },
+    -- The selected tab's line: "accent" | "class" (your class) | "custom".
+    tabUnderlineColorMode = "class",
+    tabUnderlineColor = { r = 1, g = 1, b = 1 },
 
     ----------------------------------------------------------------------------
     -- Edit box
@@ -142,11 +152,14 @@ local PC_DEFAULTS = {
     styleEditBox = true,
     editBoxPosition = "bottom",     -- "bottom" | "top" | "blizzard"
     editBoxHeight = 22,
+    -- Below the window with no gap, sharing its bottom edge, so the two read
+    -- as one panel. Only means anything with editBoxPosition = "bottom".
+    editBoxAttached = true,
 
     -- Blizzard binds the arrow keys to chat history unless Alt is held. Off here
     -- means the arrows move the cursor, like every other text field on the
     -- machine, which is what people expect the first time they mistype a word.
-    altArrowKeys = false,
+    altArrowKeys = true,
 
     -- The edit box border takes the colour of the channel you are about to
     -- speak in, so /g and /w look different before you have read the header.

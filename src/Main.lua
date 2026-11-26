@@ -453,40 +453,49 @@ PeaversCommons.SlashCommands:Register(addonName, "pchat", {
 
 -- Initialize the addon
 PeaversCommons.Events:Init(addonName, function()
+    -- Read before Initialize layers the defaults in: a saved table with no
+    -- styleVersion in it was written by a build from before the restyle.
+    local saved = _G.PeaversChatDB
+    local existing = type(saved) == "table" and next(saved) ~= nil
+    local upgrading = existing and saved.styleVersion == nil
+    -- Saved before the four padding keys existed. Their default is now on, so
+    -- the saved table is the only place left to tell.
+    local legacyPadding = existing and saved.paddingSplit == nil
+
     PC.Config:Initialize()
 
-    -- Padding used to be one number for all four sides. Anybody upgrading has
-    -- that number saved and nothing in the four keys that replaced it, and a
-    -- saved setting shadows a default forever - so without this their carefully
-    -- chosen padding would silently become ours. Runs once.
-    -- Forced off once. The screen-edge feature calls and hooks a protected
-    -- function, it is the current suspect for chat failing in Mythic+, and
-    -- changing its default does nothing for somebody who already has it saved
-    -- as on. Being a suspect is reason enough not to wait for them to find the
-    -- checkbox.
-    -- Forced off once, for the same reason as the screen edge below: a saved
-    -- setting would otherwise keep it on for everybody who already has it, and
-    -- this one is the current suspect. Every channel it rewrites is one that
-    -- stopped working; say, the only channel whose format string carries no
-    -- hyperlink, is the only one that kept working.
+    -- Every setting that already existed is saved, so its new default never
+    -- reaches anybody upgrading. The ones new in style version 2 are not, and
+    -- would restyle their window on update; these are their pre-restyle values.
+    -- /pchat defaults takes anybody who wants the new look the rest of the way.
+    if upgrading then
+        PC.Config.borderAlpha = 1
+        PC.Config.tabStyle = "text"
+        PC.Config.editBoxAttached = false
+        PC.Config.tabUnderlineColorMode = "accent"
+    end
+    if PC.Config.styleVersion ~= 2 or upgrading then
+        PC.Config.styleVersion = 2
+        PC.Config:Save()
+    end
+
+    -- Forced off once: rewriting a channel bracket broke authored chat in
+    -- Mythic+, and a saved setting would otherwise keep it on.
     if not PC.Config.shortChannelNamesWithdrawn then
         PC.Config.shortChannelNames = false
         PC.Config.shortChannelNamesWithdrawn = true
         PC.Config:Save()
     end
 
-    -- Given back. It was withdrawn on suspicion while chat was failing in
-    -- Mythic+; the cause turned out to be the channel abbreviations, and the
-    -- version that returns here does not hook the protected function that made
-    -- it worth suspecting. Anybody whose setting was forced off gets it back
-    -- once, because it was taken away without being asked.
+    -- Given back once: withdrawn on suspicion during the Mythic+ hunt, cleared.
     if PC.Config.edgeToEdgeWithdrawn then
         PC.Config.edgeToEdge = true
         PC.Config.edgeToEdgeWithdrawn = false
         PC.Config:Save()
     end
 
-    if not PC.Config.paddingSplit then
+    -- Padding was one number for all four sides; seed the four from it once.
+    if not PC.Config.paddingSplit or legacyPadding then
         local legacy = tonumber(PC.Config.padding)
         if legacy then
             PC.Config.paddingLeft = legacy

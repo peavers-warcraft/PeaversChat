@@ -74,13 +74,25 @@ function EditBox:Repaint(editBox)
     if not cfg.enabled or not cfg.styleEditBox then return end
     if not editBox or not editBox.peaversBox then return end
 
-    local border = cfg.borderColor
-    if cfg.editBoxChannelColor then
-        local color = ChannelColor(editBox)
-        if color and color.r then border = color end
+    local channel = cfg.editBoxChannelColor and ChannelColor(editBox) or nil
+    if channel and not channel.r then channel = nil end
+
+    -- Attached, the box hangs off the window's bottom edge and shares it, so
+    -- the two read as one panel with a line across it. The channel colour moves
+    -- to that line: a coloured outline round half a panel looks like a mistake.
+    if EditBox.Attached() then
+        Skin:PaintBox(editBox, Skin.NO_PAD, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
+            cfg.background, cfg.border, { seamTop = true, topColor = channel })
+        return
     end
 
-    Skin:PaintBox(editBox, Skin.NO_PAD, cfg.bgColor, cfg.bgAlpha, border, cfg.background, cfg.border)
+    Skin:PaintBox(editBox, Skin.NO_PAD, cfg.bgColor, cfg.bgAlpha, channel or cfg.borderColor,
+        cfg.background, cfg.border)
+end
+
+function EditBox.Attached()
+    local cfg = PC.Config
+    return cfg.editBoxAttached and (cfg.editBoxPosition or "bottom") == "bottom" or false
 end
 
 --------------------------------------------------------------------------------
@@ -102,6 +114,10 @@ local function Position(editBox)
     -- edges. The gap is measured off whichever side it sits on.
     local pad = Skin.Pad()
     local gap = (cfg.editBoxPosition == "top" and pad.top or pad.bottom) + 5
+
+    -- Attached: up by one hairline, so the box's top row is the window's
+    -- bottom edge rather than a second line drawn beside it.
+    if EditBox.Attached() then gap = pad.bottom - Skin.Hairline(frame) end
 
     editBox:ClearAllPoints()
     if cfg.editBoxPosition == "top" then
@@ -131,7 +147,8 @@ local function Apply(frame)
         pad.left, pad.right, pad.top, pad.bottom,
         cfg.altArrowKeys and 1 or 0, cfg.background and 1 or 0, cfg.border and 1 or 0,
         cfg.bgAlpha, cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b,
-        cfg.editBoxChannelColor and 1 or 0,
+        cfg.editBoxChannelColor and 1 or 0, cfg.editBoxAttached and 1 or 0,
+        cfg.borderAlpha or 1, cfg.borderColor.r, cfg.borderColor.g, cfg.borderColor.b,
     }, ":")
     if not Skin.Changed(editBox, "__pcApplied", signature) then return end
 

@@ -1,9 +1,9 @@
 --------------------------------------------------------------------------------
 -- Skin
 --
--- Turns a chat window into the flat black box the rest of the Peavers suite is
--- drawn in: a single #161616 field with a 1px hairline border and nothing else.
--- No gradients, no bevel, no gold.
+-- Turns a chat window into the flat dark box the rest of the Peavers suite is
+-- drawn in: a single translucent field with a faint 1px hairline and nothing
+-- else. No gradients, no bevel, no gold.
 --
 -- Three decisions here are worth explaining, because each looks like the harder
 -- option until you try the easy one.
@@ -82,19 +82,12 @@ Skin.NO_PAD = NO_PAD
 -- Doing nothing well
 --
 -- The client asks this addon to re-apply itself far more often than anything
--- has changed: every visit to the options panel, every dock and undock, some
--- loading screens. Re-applying is idempotent, so it was harmless - but harmless
--- is not free, and measured, being asked cost two hundred and sixty client
--- calls a time to arrive back where it started.
---
--- So every module records what it last applied and compares before doing it
--- again. Being asked to re-apply when nothing has changed is now a handful of
--- string compares and no client calls at all.
---
--- This is safe because nothing the client resets is left to a refresh to put
--- back: hidden textures cannot be shown again, tab alpha is pinned, and the
--- edit box anchor and the clamp insets are re-asserted from the client's own
--- call sites. A refresh that finds nothing changed genuinely has nothing to do.
+-- has changed (options panel, dock and undock, loading screens); measured, that
+-- cost 260 client calls a time to arrive back where it started. So every module
+-- records a signature of what it last applied and compares first. Safe because
+-- nothing the client resets is left to a refresh: hidden textures cannot come
+-- back, tab alpha is pinned, the edit box anchor is re-asserted from the
+-- client's own call site.
 --------------------------------------------------------------------------------
 
 --- True when `signature` differs from what was last recorded, and records it.
@@ -248,29 +241,42 @@ end
 --- Colour and place a box. `pad` pushes it out beyond the frame's own rect, so
 --- the message text gets some air rather than sitting against the border.
 ---
---- `skipTop` says the tab strip is drawn above this and the two are meant to
---- read as one box. It drops the top edge, and - the part that matters - stops
---- the box growing upwards with the padding.
+--- `opts` (all optional):
+---   flushTop  the box stops at the frame's top edge instead of growing upwards
+---             with the padding. The tab strip owns everything above that edge:
+---             padding is room around the text, and above the text there is a
+---             tab row, drawn on the dock and so underneath the tabs. The box is
+---             drawn on the chat frame and is not, so it has no business there.
+---   skipTop   no top edge; the sides run to the very top and meet whatever is
+---             drawn above.
+---   seamTop   the top row of the rect is somebody else's line - the window's
+---             bottom edge, when the edit box is attached under it. Nothing of
+---             ours is drawn on that row unless topColor asks for it.
+---   topColor  the top edge in this colour, fully opaque.
 ---
---- That upward growth is what put the background over the bottom half of the
---- tabs: padding is room around the *text*, and above the text there is no text
---- to give room to, there is a tab row. Everything above the frame's top edge
---- belongs to the strip, which is drawn on the dock and therefore underneath
---- the tabs. The box is drawn on the chat frame and is not, so it has no
---- business up there at any padding.
-function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBorder, skipTop)
+--- The sides stop short of the top and bottom edges rather than crossing them.
+--- At full opacity that makes no difference; with a translucent border the
+--- crossing pixel is drawn twice and every corner shows a brighter dot.
+local NO_OPTS = {}
+
+function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBorder, opts)
     local box = frame.peaversBox
     if not box then return end
 
+    opts = opts or NO_OPTS
     local px = Hairline(frame)
     pad = pad or NO_PAD
 
     local left, right = -pad.left, pad.right
     local bottom = -pad.bottom
-    local topPad = skipTop and 0 or pad.top
+    local top = opts.flushTop and 0 or pad.top
+    local seam = opts.seamTop
+    local showTop = showBorder and not opts.skipTop and (not seam or opts.topColor ~= nil)
+    local sideTop = (showTop or seam) and (top - px) or top
+    local alpha = PC.Config.borderAlpha or 1
 
     box.bg:ClearAllPoints()
-    box.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, topPad)
+    box.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, seam and (top - px) or top)
     box.bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom)
     Fill(box.bg, bgColor, bgAlpha)
     box.bg:SetShown(showBg and true or false)
@@ -278,8 +284,8 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
     -- The four edges sit on the padded rect, not on the frame, so the border is
     -- the outline of what you can see rather than of where the text starts.
     box.top:ClearAllPoints()
-    box.top:SetPoint("TOPLEFT", frame, "TOPLEFT", left, topPad)
-    box.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, topPad)
+    box.top:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top)
+    box.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, top)
     box.top:SetHeight(px)
 
     box.bottom:ClearAllPoints()
@@ -288,19 +294,27 @@ function Skin:PaintBox(frame, pad, bgColor, bgAlpha, borderColor, showBg, showBo
     box.bottom:SetHeight(px)
 
     box.left:ClearAllPoints()
-    box.left:SetPoint("TOPLEFT", frame, "TOPLEFT", left, topPad)
-    box.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", left, bottom)
+    box.left:SetPoint("TOPLEFT", frame, "TOPLEFT", left, sideTop)
+    box.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", left, bottom + px)
     box.left:SetWidth(px)
 
     box.right:ClearAllPoints()
-    box.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, topPad)
-    box.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom)
+    box.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, sideTop)
+    box.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom + px)
     box.right:SetWidth(px)
 
-    for _, name in ipairs({ "top", "bottom", "left", "right" }) do
-        box[name]:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, 1)
-        box[name]:SetShown(showBorder and not (skipTop and name == "top") and true or false)
+    for _, name in ipairs({ "bottom", "left", "right" }) do
+        box[name]:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, alpha)
+        box[name]:SetShown(showBorder and true or false)
     end
+
+    local topColor = opts.topColor
+    if topColor then
+        box.top:SetColorTexture(topColor.r, topColor.g, topColor.b, 1)
+    else
+        box.top:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, alpha)
+    end
+    box.top:SetShown(showTop and true or false)
 end
 
 function Skin:HideBox(frame)
@@ -316,26 +330,13 @@ end
 -- background so the tabs read as part of the window rather than balanced on
 -- top of it.
 --
--- This was a child frame in the BACKGROUND strata once. It drew over the tabs,
--- and the reason is worth writing down: strata only orders frames against other
--- frames, and where the client puts the tab dock in that ordering is not
--- something an addon can know. Guessing produced invisible tabs.
---
--- So the strip is not ordered against the tabs at all. It is drawn as textures
--- on the tabs' own parent, and a frame's regions are always beneath its child
--- frames - not usually, not depending on level, but by definition. The textures
--- are anchored to the chat frame rather than to the frame that owns them, so
--- they line up with the window while inheriting the dock's z-order and the
--- dock's visibility.
---
--- Docked windows share one dock, so they share one strip, keyed off the host.
--- They also share a rect, so whichever of them anchored it last is right for
--- all of them.
+-- Never a frame ordered against the tabs by strata: a BACKGROUND-strata child
+-- once drew over them, because where the client puts the dock in that ordering
+-- is not knowable. Drawn instead as textures on an ancestor of the tabs, whose
+-- regions are beneath its child frames by definition, anchored to the chat
+-- frame. Docked windows share one dock and one rect, so they share one strip.
 --------------------------------------------------------------------------------
 
---- The frame the tabs are children of: the dock when docked, the chat frame
---- itself when not. Returns nil when it is neither - UIParent, say - because
---- putting our textures there would leak them into a frame that outlives chat.
 --- Is `ancestor` somewhere above `widget` in the parent chain?
 local function IsAncestorOf(ancestor, widget)
     local depth = 0
@@ -358,16 +359,9 @@ function Skin.StripHost(frame)
     local host = tab:GetParent()
     if not host or host == _G.UIParent then return nil end
 
-    -- Prefer the dock itself over whatever inner frame the tabs happen to hang
-    -- from. The client parents docked tabs into a scroll frame's child so the
-    -- row can overflow, and a scroll frame clips its child - so textures drawn
-    -- there are cut off at the scroll rect while the tabs, being frames, carry
-    -- on past it. That is a background that stops halfway across the tab row.
-    --
-    -- The dock is an ancestor of the tabs either way, so hosting the strip
-    -- there keeps the whole point of hosting it on an ancestor: a frame's
-    -- regions are beneath its child frames by definition. It simply is not
-    -- inside anything that clips.
+    -- The dock, not the scroll frame child the client parents docked tabs into:
+    -- a scroll frame clips its child, which cut the strip off halfway across
+    -- the tab row. The dock is still an ancestor, and clips nothing.
     local dock = _G.GeneralDockManager
     if dock and dock ~= _G.UIParent and IsAncestorOf(dock, tab) then
         return dock
@@ -477,6 +471,7 @@ function Skin:PaintStrip(host, frame, pad, height, bgColor, bgAlpha, borderColor
 
     local px = Hairline(frame)
     pad = pad or NO_PAD
+    local alpha = PC.Config.borderAlpha or 1
 
     local left, right = -pad.left, pad.right
 
@@ -497,18 +492,19 @@ function Skin:PaintStrip(host, frame, pad, height, bgColor, bgAlpha, borderColor
     strip.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, top)
     strip.top:SetHeight(px)
 
+    -- Below the top edge, not across it; see PaintBox on translucent corners.
     strip.left:ClearAllPoints()
-    strip.left:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top)
+    strip.left:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top - px)
     strip.left:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", left, 0)
     strip.left:SetWidth(px)
 
     strip.right:ClearAllPoints()
-    strip.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, top)
+    strip.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, top - px)
     strip.right:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", right, 0)
     strip.right:SetWidth(px)
 
     for _, name in ipairs({ "top", "left", "right" }) do
-        strip[name]:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, 1)
+        strip[name]:SetColorTexture(borderColor.r, borderColor.g, borderColor.b, alpha)
         strip[name]:SetShown(showBorder and true or false)
     end
 end
@@ -539,10 +535,19 @@ local function PaintSignature(frame, pad, strip)
     return table.concat({
         strip, pad.left, pad.right, pad.top, pad.bottom,
         bg.r, bg.g, bg.b, cfg.bgAlpha, tostring(FillTexture()),
-        border.r, border.g, border.b,
+        border.r, border.g, border.b, cfg.borderAlpha or 1,
         cfg.background and 1 or 0, cfg.border and 1 or 0,
+        Skin.BoxedTabs() and 1 or 0,
         Hairline(frame),
     }, ":")
+end
+
+--- Tabs drawn as boxes of their own rather than as words on the strip. With
+--- the strip behind them the window box keeps its top edge, which becomes the
+--- line under the tab row.
+function Skin.BoxedTabs()
+    local cfg = PC.Config
+    return cfg.styleTabs and cfg.tabStyle == "boxed" or false
 end
 
 function Skin:RefreshStrip(frame, force)
@@ -562,8 +567,10 @@ function Skin:RefreshStrip(frame, force)
     frame.__pcPainted = signature
 
     Skin:EnsureBox(frame)
+    local inside = strip > 0
     Skin:PaintBox(frame, pad, cfg.bgColor, cfg.bgAlpha, cfg.borderColor,
-        cfg.background, cfg.border, strip > 0)
+        cfg.background, cfg.border,
+        { flushTop = inside, skipTop = inside and not Skin.BoxedTabs() })
 
     if host then
         Skin:EnsureStrip(host)
@@ -576,29 +583,14 @@ end
 -- Reaching the screen edge
 --
 -- Blizzard gives every chat window a clamping inset, which is why dragging one
--- to the left of the screen stops short against nothing you can see. Zeroing
--- the insets frees it.
+-- to the left of the screen stops short against nothing you can see.
 --
--- Never hooked. An earlier version installed a hooksecurefunc on
--- SetClampRectInsets so the client could never re-assert its own margin - a
--- hook on a protected function sitting on every chat window for the session,
--- with no way to take it off again. That was the wrong trade even before it
--- became a suspect for chat breaking in Mythic+.
---
--- The version after it swung too far the other way and cleared the insets
--- exactly once per window per session. Anything that put a margin back - Edit
--- Mode applying a layout does, and does not need a reload to do it - left the
--- window stuck short of the edge until the next login, which is how "the chat
--- box still will not go all the way left" survived a fix for it.
---
--- So: no hook, but no latch either. Each refresh reads the insets back and
--- clears them again only if something has re-asserted a margin. That is a read
--- and a conditional write on the handler cadence - login, docking, layout
--- changes - and nothing per frame.
---
--- Protected in combat, so the attempt is skipped there and made on the next
--- refresh instead. The client's original insets are remembered, so switching
--- the addon off gives them back.
+-- Never hooked: a hook on SetClampRectInsets, a protected function, cannot be
+-- taken off again and was a suspect when chat broke in Mythic+. Never latched
+-- either: Edit Mode re-asserts a margin without a reload, and a once-a-session
+-- clear left the window stuck short of the edge. Each refresh reads the insets
+-- back and clears them only if a margin has come back. Skipped in combat; the
+-- client's own insets are remembered so switching off gives them back.
 --------------------------------------------------------------------------------
 
 -- The insets the client currently has on this frame, or nil if it will not say.
@@ -616,37 +608,13 @@ local function ClearClamp(frame)
     if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then return end
     if type(frame.SetClampRectInsets) ~= "function" then return end
 
-    ----------------------------------------------------------------------------
-    -- Stop it being clamped at all, not just clamped by nothing
-    --
-    -- Zeroing the insets is a fair-weather fix, because the client puts its own
-    -- back. FloatingChatFrame_UpdateBackgroundAnchors ends in
-    --
-    --     self:SetClampRectInsets(-35, 35 + scrollbarWidth, 38, -50)
-    --
-    -- and runs on its own schedule - leaving Edit Mode is one. The moment that
-    -- lands, a window sitting against a screen edge is outside the rect it is
-    -- allowed to be in, and the client moves it. Clearing the insets afterwards
-    -- does not undo that: the window has already jumped.
-    --
-    -- So clamping goes off entirely, which is what ElvUI does one line below its
-    -- own SetClampRectInsets(0,0,0,0). An inset the client re-asserts cannot
-    -- shove a frame that is not being clamped.
-    --
-    -- Only under edgeToEdge, which is the setting that means "let it reach the
-    -- edge". The cost of an unclamped frame is that it can be dragged off
-    -- screen entirely, and that is a bad trade for somebody who never asked to
-    -- get closer to the edge than the client allows. Position re-asserts the
-    -- saved spot on every refresh, so a window that does get pushed out has a
-    -- way back.
-    ----------------------------------------------------------------------------
-    -- Latched, once per window per session, which the insets below deliberately
-    -- are not. The difference is that the client re-asserts the insets and does
-    -- not re-assert this: SetClampedToScreen appears nowhere in the chat code on
-    -- any client, because it is an XML attribute set when the frame is built and
-    -- never touched again. Nothing is going to turn it back on behind us, so
-    -- asking every refresh would be a client call a second to learn an answer
-    -- that cannot have changed.
+    -- Clamping off entirely, not just clamped by nothing. The client puts its
+    -- own insets back (FloatingChatFrame_UpdateBackgroundAnchors, on leaving
+    -- Edit Mode among others), and the moment it does, a window against the
+    -- edge is outside its allowed rect and gets moved; clearing afterwards
+    -- cannot undo the jump. ElvUI does the same. Only under edgeToEdge, since
+    -- an unclamped window can be dragged off screen (Position re-asserts the
+    -- saved spot). Latched: nothing in the chat code turns it back on.
     if frame.__pcClamped == nil and type(frame.SetClampedToScreen) == "function" then
         frame.__pcClamped = true
         pcall(frame.SetClampedToScreen, frame, false)
@@ -654,22 +622,12 @@ local function ClearClamp(frame)
 
     local left, right, top, bottom = CurrentClamp(frame)
 
-    -- Remember the client's own margin the first time we see it, so switching
-    -- the addon off can give it back. Recorded before the first clear and never
-    -- overwritten, or the "original" would become our own zeroes.
+    -- The client's own margin, recorded once and never overwritten, or the
+    -- "original" would become our own zeroes.
     if frame.__pcClamp == nil then
         frame.__pcClamp = left and { left, right, top, bottom } or false
     end
 
-    -- Ask what the insets are now rather than remembering that we cleared them
-    -- once. The old latch meant exactly one attempt per window per session, so
-    -- anything that re-asserted a margin afterwards - Edit Mode applying a
-    -- layout is the obvious one, and it does not need a reload to happen - left
-    -- the window stuck short of the edge with no way back but /reload.
-    --
-    -- This is still not a hook. It is a read and a conditional write on the same
-    -- cadence as every other handler: login, a docking change, a layout change.
-    -- Nothing here runs per frame.
     if left == nil then
         -- The client will not report them; fall back to clearing once, which is
         -- what the previous version did in every case.
@@ -781,20 +739,13 @@ local function Apply(frame)
     if frame.SetFading then frame:SetFading(cfg.fading and true or false) end
     if frame.SetTimeVisible then frame:SetTimeVisible(cfg.timeVisible or 120) end
 
-    -- Guarded on the value rather than called every time: SetMaxLines discards
-    -- the buffer, so calling it on every refresh would quietly wipe the history
-    -- every time somebody moved a slider.
-    -- 0 means "do not touch it at all", which is different from setting it to
-    -- whatever the client's default happens to be: it means SetMaxLines is
-    -- never called on this frame, so the message buffer is never reallocated by
-    -- us. That distinction is the point - it is the only thing in this file
-    -- that touches where messages are kept, so it needs to be eliminable.
+    -- Guarded on the value: SetMaxLines discards the buffer, so calling it every
+    -- refresh would wipe the history whenever a slider moved. 0 means never call
+    -- it at all - the one thing here that touches where messages are kept, so it
+    -- has to be eliminable.
     if frame.SetMaxLines and cfg.maxLines and cfg.maxLines > 0
         and frame.__pcMaxLines ~= cfg.maxLines then
-        -- Remember what the client had, because this is one of the few things
-        -- here that outlives switching the addon off - and anything that
-        -- outlives being switched off cannot be ruled out by switching it off,
-        -- which is the whole point of having a switch.
+        -- Remembered, so switching the addon off really does put it back.
         if frame.__pcOrigMaxLines == nil and frame.GetMaxLines then
             local ok, lines = pcall(frame.GetMaxLines, frame)
             frame.__pcOrigMaxLines = (ok and lines) or false

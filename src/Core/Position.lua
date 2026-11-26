@@ -1,47 +1,36 @@
 --------------------------------------------------------------------------------
 -- Position
 --
--- Puts the chat window where the config says, once, and then hands it back.
+-- Puts the main chat window where the config says, and keeps it there without
+-- ever being seen to move it.
 --
--- "Once" is the whole design, and the first version got it wrong. Applying the
--- position from the Frames handler meant re-applying it on every refresh -
--- login, docking, and every UPDATE_FLOATING_CHAT_WINDOWS, which is exactly what
--- fires after somebody drags the window in Edit Mode. So the window was yanked
--- back the moment it was released, and the addon had quietly taken away the
--- ability to move your own chat. A UI pack places things; it does not hold them
--- down.
+-- ChatFrame1 is an Edit Mode system. FCF_RestorePositionAndDimensions returns
+-- early for DEFAULT_CHAT_FRAME, so what places it at login is the active Edit
+-- Mode layout - a record that knows nothing of this addon. Placing the window
+-- afterwards, a frame later, is the jump people see: Edit Mode's spot, then
+-- ours. Three things take the jump away.
 --
--- What that leaves is a placement that happens at login and when something asks
--- for it explicitly - the settings button, /pchat move, a UI pack layout being
--- installed - and a window that is yours the rest of the time.
+-- 1. The layout is told. Once placed, our anchor and size are written into the
+--    active Edit Mode layout (never a preset, never while Edit Mode is open or
+--    in combat), so from the next login Edit Mode itself puts the window here
+--    and there is nothing left to correct.
 --
--- THE PART THAT IS NOT TRUE, and worth recording because the design above rested
--- on it: "Blizzard persists chat geometry, so a position set once survives
--- reloads on its own." Not for the one window this file moves.
--- FCF_RestorePositionAndDimensions opens with
+-- 2. Corrections land in the same frame. A hook on the window's own
+--    ApplySystemAnchor (and UpdateClampOffsets) attaches a one-shot OnUpdate,
+--    which runs after this frame's events and before it is drawn. A timer would
+--    wait a frame, and that frame at Edit Mode's spot is the blink. The hook
+--    itself only attaches the script: nothing of ours runs inside Edit Mode.
 --
---     if (chatFrame == DEFAULT_CHAT_FRAME) then return end
+-- 3. No SetSize. The size rides as a second corner anchor, so the rect is set
+--    entirely by anchors. SetSize on ChatFrame1 dispatches the dock's size
+--    handler synchronously from addon code, which taints the dock.
 --
--- on Mainline and Classic alike - Edit Mode ships on every client now - so the
--- FCF path saves ChatFrame1's geometry and never puts it back. What restores it
--- is the Edit Mode layout, which is a different record again and knows nothing
--- about this addon's settings. That is the third position for one window, and
--- the reason this file re-asserts rather than places once: it has to land after
--- Edit Mode has had its say.
+-- Anchors are written through SetPointBase / ClearAllPointsBase where Edit Mode
+-- has replaced the frame's own: the overrides would mark the layout as edited.
+-- Every write is compare-gated, so a pass that finds the window in place does
+-- nothing. A drag, a resize or an Edit Mode move is learned, not fought.
 --
--- The two records do not agree on units either: the client stores a fraction of
--- the screen, from a corner it picks by which half the window's centre is in,
--- and this addon stores absolute offsets from a corner the player chose.
---
--- And when you do move it, the config follows rather than fights: Blizzard calls
--- FCF_SavePositionAndDimensions after a user move, and that is hooked to learn
--- the new spot. Hooking it is safe - it is an ordinary function in
--- FloatingChatFrame.lua, not one of the protected ones this addon stays away
--- from.
---
--- Only the dock leader is moved. Docked windows follow their leader, and moving
--- a docked child individually is how you end up with two chat windows in two
--- corners and no way back.
+-- Only the dock leader is placed; docked windows follow it.
 --------------------------------------------------------------------------------
 
 local addonName, PC = ...
@@ -53,33 +42,17 @@ PC.Position = Position
 
 local Frames = PC.Frames
 
--- Placed for this session. Cleared whenever something changes the intended
--- position, which is what makes "apply again" mean something.
-local placed = false
+local abs, floor = math.abs, math.floor
 
--- Set while we are the ones moving the window, so the hook that learns a user's
--- position does not learn our own placement back again.
-local placing = false
-
+local placed = false        -- placed this session; cleared to place again
+local placing = false       -- we are moving it, so do not learn it back
 local pendingCombat = false
-
--- Forward declaration. Defined under "Holding the position against the client",
--- below, but Apply above it has to be able to ask - and a local only exists for
--- the code written after it.
-local PlayerIsDragging
-
--- Set while Edit Mode is open: nothing here puts a window back while the player
--- is deliberately arranging it. Cleared once the new position has been read,
--- not the moment Edit Mode closes - see LearnFromEditMode.
-local editing = false
+local editing = false       -- Edit Mode is open; see LearnFromEditMode
 
 --------------------------------------------------------------------------------
 -- The window
 --------------------------------------------------------------------------------
 
--- The frame everything else is docked to. ChatFrame1 in every normal setup;
--- asked for rather than assumed because a general chat window can be closed and
--- the dock re-led by another.
 local function DockLeader()
     if _G.GENERAL_CHAT_DOCK and _G.GENERAL_CHAT_DOCK.primary then
         return _G.GENERAL_CHAT_DOCK.primary
@@ -91,18 +64,266 @@ function Position:IsLeader(frame)
     return frame ~= nil and frame == DockLeader()
 end
 
--- Blizzard's own store for chat geometry. Writing through it means the position
--- survives a reload the way a dragged window does, instead of being re-imposed
--- from scratch every login.
-local function Persist(frame)
-    if type(_G.FCF_SavePositionAndDimensions) == "function" then
-        pcall(_G.FCF_SavePositionAndDimensions, frame)
+local function PlayerIsDragging()
+    if editing or _G.MOVING_CHATFRAME then return true end
+    local frame = DockLeader()
+    local grabber = frame and frame.ResizeButton
+    return grabber and grabber.GetButtonState and grabber:GetButtonState() == "PUSHED" or false
+end
+
+Position.PlayerIsDragging = PlayerIsDragging
+
+--------------------------------------------------------------------------------
+-- The target
+--------------------------------------------------------------------------------
+
+-- Each of the nine points as a share of a rect, from its left and its bottom.
+local FRAC = {
+    BOTTOMLEFT = { 0, 0 }, BOTTOM = { 0.5, 0 }, BOTTOMRIGHT = { 1, 0 },
+    LEFT = { 0, 0.5 }, CENTER = { 0.5, 0.5 }, RIGHT = { 1, 0.5 },
+    TOPLEFT = { 0, 1 }, TOP = { 0.5, 1 }, TOPRIGHT = { 1, 1 },
+}
+
+-- A corner, the corner opposite it, and which way the size reaches it.
+local OPPOSITE = {
+    BOTTOMLEFT = { "TOPRIGHT", 1, 1 },
+    TOPLEFT = { "BOTTOMRIGHT", 1, -1 },
+    TOPRIGHT = { "BOTTOMLEFT", -1, -1 },
+    BOTTOMRIGHT = { "TOPLEFT", -1, 1 },
+}
+
+-- { point, relativePoint, x, y } for each anchor; reused, never reallocated.
+local target = { {}, {} }
+
+local function SetTarget(i, point, rel, x, y)
+    local t = target[i]
+    t[1], t[2], t[3], t[4] = point, rel, x, y
+end
+
+--- Fill `target` from the config. Returns how many anchors it holds - one
+--- when the size is left alone, two when it rides a second corner - or nil
+--- for a config naming a point that does not exist.
+local function BuildTarget(cfg)
+    local point = cfg.chatPoint or "BOTTOMLEFT"
+    local rel = cfg.chatRelativePoint or point
+    local f = FRAC[point]
+    if not f or not FRAC[rel] then return nil end
+
+    local x, y = tonumber(cfg.chatX) or 0, tonumber(cfg.chatY) or 22
+    local w, h = tonumber(cfg.chatWidth) or 0, tonumber(cfg.chatHeight) or 0
+
+    if w <= 0 or h <= 0 then
+        SetTarget(1, point, rel, x, y)
+        return 1
     end
+
+    local opp = OPPOSITE[point]
+    if opp then
+        SetTarget(1, point, rel, x, y)
+        SetTarget(2, opp[1], rel, x + opp[2] * w, y + opp[3] * h)
+    else
+        -- An edge middle or the centre: the rect composed around it outright.
+        SetTarget(1, "TOPLEFT", rel, x - f[1] * w, y + (1 - f[2]) * h)
+        SetTarget(2, "BOTTOMRIGHT", rel, x + (1 - f[1]) * w, y - f[2] * h)
+    end
+    return 2
+end
+
+--- The frame already carries exactly these anchors. GetPoint reports the
+--- anchor definitions, not a rect that might lag. A secret read is a miss.
+local function AtTarget(frame, n)
+    local secret = _G.issecretvalue
+    local num = frame:GetNumPoints()
+    if (secret and secret(num)) or num ~= n then return false end
+
+    for i = 1, n do
+        local point, relTo, relPoint, x, y = frame:GetPoint(i)
+        if secret and (secret(point) or secret(relTo) or secret(relPoint)
+            or secret(x) or secret(y)) then
+            return false
+        end
+        if relTo ~= _G.UIParent or type(x) ~= "number" or type(y) ~= "number" then
+            return false
+        end
+
+        local hit = false
+        for j = 1, n do
+            local t = target[j]
+            if t[1] == point and t[2] == relPoint and abs(t[3] - x) < 0.1 and abs(t[4] - y) < 0.1 then
+                hit = true
+            end
+        end
+        if not hit then return false end
+    end
+    return true
 end
 
 --------------------------------------------------------------------------------
--- Apply
+-- Telling Edit Mode
 --------------------------------------------------------------------------------
+
+local function EditModeOpen()
+    local manager = _G.EditModeManagerFrame
+    if not manager then return false end
+    return (manager.editModeActive or (manager.IsShown and manager:IsShown())) and true or false
+end
+
+--- Every layout, presets first, which is the list SaveLayouts takes and the
+--- one activeLayout indexes. GetLayouts returns only the saved half, and
+--- saving a short list would delete layouts. nil whenever that cannot be built.
+local function LayoutsForSave()
+    local ok, info = pcall(_G.C_EditMode.GetLayouts)
+    if not ok or type(info) ~= "table" or type(info.layouts) ~= "table" then return nil end
+
+    local manager = _G.EditModePresetLayoutManager
+    local presets = manager and manager.GetCopyOfPresetLayouts and manager:GetCopyOfPresetLayouts()
+    if type(presets) ~= "table" or #presets == 0 then return nil end
+
+    local count = #presets
+    for i = 1, #info.layouts do presets[count + i] = info.layouts[i] end
+    info.layouts = presets
+    return info, count
+end
+
+local function FindRow(sys, id)
+    if type(sys.settings) ~= "table" then return nil end
+    for _, row in ipairs(sys.settings) do
+        if type(row) == "table" and row.setting == id then return row end
+    end
+end
+
+-- What was last written this session. Once per target at most, so a layout
+-- that will not take a value can never loop write, apply, write.
+local lastStored
+
+local function SyncStore()
+    local cfg = PC.Config
+    if not cfg.enabled or not cfg.positionEnabled then return end
+    if InCombatLockdown() or EditModeOpen() or PlayerIsDragging() then return end
+
+    local Enum, CEM = _G.Enum, _G.C_EditMode
+    local systems = Enum and Enum.EditModeSystem
+    local settings = Enum and Enum.EditModeChatFrameSetting
+    local layoutTypes = Enum and Enum.EditModeLayoutType
+    if not (CEM and CEM.GetLayouts and CEM.SaveLayouts and systems and systems.ChatFrame
+        and settings and settings.WidthHundreds and settings.HeightTensAndOnes
+        and layoutTypes and layoutTypes.Preset ~= nil) then
+        return
+    end
+
+    local frame = _G.ChatFrame1
+    if not frame or DockLeader() ~= frame or not BuildTarget(cfg) then return end
+
+    -- Edit Mode keeps one anchor, in offsets at scale 1, plus a size.
+    local t = target[1]
+    local scale = frame:GetScale() or 1
+    local x, y = t[3] * scale, t[4] * scale
+    local w = floor((tonumber(cfg.chatWidth) or 0) + 0.5)
+    local h = floor((tonumber(cfg.chatHeight) or 0) + 0.5)
+
+    local key = table.concat({ t[1], t[2], x, y, w, h }, ":")
+    if key == lastStored then return end
+    lastStored = key
+
+    local blob, presets = LayoutsForSave()
+    local active = blob and blob.activeLayout
+    if type(active) ~= "number" or active <= presets then return end
+    local layout = blob.layouts[active]
+    if type(layout) ~= "table" or layout.layoutType == layoutTypes.Preset then return end
+
+    local sys
+    for _, entry in ipairs(type(layout.systems) == "table" and layout.systems or {}) do
+        if type(entry) == "table" and entry.system == systems.ChatFrame then sys = entry break end
+    end
+    if not sys then return end
+
+    local changed = false
+
+    local anchor = sys.anchorInfo
+    if not (type(anchor) == "table" and sys.anchorInfo2 == nil
+        and anchor.point == t[1] and anchor.relativeTo == "UIParent" and anchor.relativePoint == t[2]
+        and type(anchor.offsetX) == "number" and type(anchor.offsetY) == "number"
+        and abs(anchor.offsetX - x) < 0.1 and abs(anchor.offsetY - y) < 0.1) then
+        if type(anchor) ~= "table" then
+            anchor = {}
+            sys.anchorInfo = anchor
+        end
+        anchor.point, anchor.relativeTo, anchor.relativePoint = t[1], "UIParent", t[2]
+        anchor.offsetX, anchor.offsetY = x, y
+        sys.anchorInfo2 = nil
+        sys.isInDefaultPosition = false
+        changed = true
+    end
+
+    -- Each dimension is stored as a hundreds row and a tens-and-ones row.
+    if w > 0 and h > 0 then
+        for _, pair in ipairs({
+            { settings.WidthHundreds, floor(w / 100) }, { settings.WidthTensAndOnes, w % 100 },
+            { settings.HeightHundreds, floor(h / 100) }, { settings.HeightTensAndOnes, h % 100 },
+        }) do
+            local row = FindRow(sys, pair[1])
+            if not row then
+                if type(sys.settings) ~= "table" then sys.settings = {} end
+                sys.settings[#sys.settings + 1] = { setting = pair[1], value = pair[2] }
+                changed = true
+            elseif row.value ~= pair[2] then
+                row.value = pair[2]
+                changed = true
+            end
+        end
+    end
+
+    if changed then pcall(CEM.SaveLayouts, blob) end
+end
+
+local storeQueued = false
+
+local function ScheduleStore()
+    if storeQueued then return end
+    storeQueued = true
+    _G.C_Timer.After(0, function()
+        storeQueued = false
+        SyncStore()
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- Placing
+--------------------------------------------------------------------------------
+
+local function Place(frame)
+    local n = BuildTarget(PC.Config)
+    if not n then return false end
+
+    -- Before the anchors: a frame still clamped with an inset cannot sit
+    -- against the screen edge, and the clamp shoves it back.
+    if PC.Skin and PC.Skin.ClearClampFor then PC.Skin.ClearClampFor(frame) end
+
+    if AtTarget(frame, n) then return true end
+
+    local system = frame.SetPointBase ~= nil
+    local clear = frame.ClearAllPointsBase or frame.ClearAllPoints
+    local setPoint = frame.SetPointBase or frame.SetPoint
+
+    placing = true
+    if not system then pcall(frame.SetUserPlaced, frame, true) end
+    pcall(clear, frame)
+    for i = 1, n do
+        local t = target[i]
+        pcall(setPoint, frame, t[1], _G.UIParent, t[2], t[3], t[4])
+    end
+
+    -- A window that is not an Edit Mode system is restored by the client's own
+    -- chat geometry record, so it gets written there instead.
+    if not system and type(_G.FCF_SavePositionAndDimensions) == "function" then
+        pcall(_G.FCF_SavePositionAndDimensions, frame)
+    end
+    placing = false
+    return true
+end
+
+local guarded = false
+local InstallGuard
 
 --- Place the window.
 --- @param frame? table The frame being refreshed; ignored unless it is the leader.
@@ -110,152 +331,64 @@ end
 function Position:Apply(frame, force)
     local cfg = PC.Config
     if not cfg or not cfg.enabled or not cfg.positionEnabled then return end
-
     if placed and not force then return end
-
-    -- Never while the player has hold of it. Reassert checks this too; Apply
-    -- checks it again because /pchat move, the settings button and a UI pack
-    -- install all arrive here directly, and none of them is worth yanking a
-    -- window out of somebody's hand for.
     if PlayerIsDragging() then return end
 
     frame = frame or DockLeader()
     if not frame or not self:IsLeader(frame) then return end
 
-    -- Moving a frame is not protected, but a chat window can be mid-anything
-    -- during a fight and there is no reason at all this has to happen now.
     if InCombatLockdown() then
         pendingCombat = true
         return
     end
 
-    -- The clamping margin has to go before the move, not after. A frame clamped
-    -- to the screen with a left inset cannot be placed against the left edge:
-    -- SetPoint puts it there and the clamp shoves it back by the inset, which
-    -- looks exactly like the position setting being ignored.
-    if PC.Skin and PC.Skin.ClearClampFor then
-        PC.Skin.ClearClampFor(frame)
-    end
-
-    local point = cfg.chatPoint or "BOTTOMLEFT"
-    local x = tonumber(cfg.chatX) or 0
-    local y = tonumber(cfg.chatY) or 22
-    local width = tonumber(cfg.chatWidth) or 0
-    local height = tonumber(cfg.chatHeight) or 0
-
-    placing = true
-
-    -- Size first, then position: setting a size can nudge an anchored frame, so
-    -- doing it the other way round leaves the window a few pixels out.
-    --
-    -- This used to prefer FCF_SetWindowSize over SetSize, to keep the client's
-    -- own record of the size in step. There is no FCF_SetWindowSize in FrameXML
-    -- on any client, so that check never passed and every install has taken this
-    -- branch anyway. The record is written by SetChatWindowSavedDimensions,
-    -- which FCF_SavePositionAndDimensions calls and Persist below goes through.
-    if width > 0 and height > 0 then
-        pcall(frame.SetSize, frame, width, height)
-    end
-
-    pcall(frame.SetUserPlaced, frame, true)
-    pcall(frame.ClearAllPoints, frame)
-    -- The recorded relative corner, falling back to the same corner for every
-    -- position written before that was stored - which is what the old code
-    -- assumed unconditionally, and what the settings page still means.
-    pcall(frame.SetPoint, frame, point, _G.UIParent, cfg.chatRelativePoint or point, x, y)
-
-    Persist(frame)
-
-    placing = false
+    if not Place(frame) then return end
     placed = true
+
+    InstallGuard()
+    ScheduleStore()
 end
 
--- Place it again even though it has already been placed. What the settings
--- button, /pchat move and a UI pack install all want.
+-- What the settings button, /pchat move and a UI pack install want.
 function Position:Reapply()
     placed = false
+    lastStored = nil
     self:Apply(nil, true)
 end
 
 --------------------------------------------------------------------------------
--- Holding the position against the client
---
--- The client re-lays its chat windows out several times during a login and on
--- every dock change, so a placement that happens once is a race against the last
--- of them. It used to be placed at login and then again a second later if the
--- size did not match, which is both a guess at when the client has finished and
--- the visible jump people describe as the chat snapping about after loading.
---
--- So it re-asserts, on the events that do the re-laying, which is what ElvUI
--- does and the only thing that holds.
---
--- Re-asserting from a STALE config is how an addon takes away your ability to
--- move your own chat, by snapping every drag back as you release it. Three
--- things stop that here.
---
--- The config learns first. A drag or resize ends in
--- FCF_SavePositionAndDimensions, which is hooked, so what gets re-asserted IS
--- where you just put the window.
---
--- Nothing is applied mid-drag. MOVING_CHATFRAME and the grabber's button state
--- both mean the geometry on screen is the player's hand - not something to
--- enforce, and not something to learn from either. A re-assert landing mid-drag
--- would snap the window back and then be captured as intentional, losing the
--- drag for good.
---
--- And it is deferred a frame, which is what orders the two halves. Letting go
--- runs FCF_StopDragging, which docks the frame - firing
--- UPDATE_FLOATING_CHAT_WINDOWS synchronously, before anything is saved - and
--- only then calls FCF_SavePositionAndDimensions. An undeferred re-assert would
--- run off that event against the old position. A frame later, the save has been
--- and the config already holds the new one.
+-- Holding it, in the same frame
 --------------------------------------------------------------------------------
 
--- True while the player has hold of the window. Checked rather than tracked: the
--- client owns both of these and there is no event for either.
-function PlayerIsDragging()
-    -- Edit Mode counts. It is a longer drag with a panel attached, and the same
-    -- rule applies: what is on screen is the player's doing.
-    if editing then return true end
+local driver = CreateFrame("Frame")
 
-    if _G.MOVING_CHATFRAME then return true end
-
-    local frame = DockLeader()
-    local grabber = frame and frame.ResizeButton
-    if grabber and grabber.GetButtonState and grabber:GetButtonState() == "PUSHED" then
-        return true
-    end
-
-    return false
+-- Attached on request and removed as it runs, so nothing is installed while
+-- there is nothing to do.
+local function RunReassert(self)
+    self:SetScript("OnUpdate", nil)
+    if PlayerIsDragging() then return end
+    Position:Apply(nil, true)
 end
 
-Position.PlayerIsDragging = PlayerIsDragging
-
-local reassertQueued = false
-
--- Put the window back where the config says, however many times the client
--- disturbs it. Safe to call on every event that might have: it coalesces to one
--- pass per frame, does nothing while the window is being dragged, and re-applies
--- the geometry the hook has already learned.
 function Position:Reassert()
     local cfg = PC.Config
     if not cfg or not cfg.enabled or not cfg.positionEnabled then return end
-    if reassertQueued then return end
+    driver:SetScript("OnUpdate", RunReassert)
+end
 
-    reassertQueued = true
+-- Installed the first time the window is placed, never at load: a hook cannot
+-- be taken off, so it goes on only for somebody who asked to be positioned.
+-- Never a hook on SetPoint, and the window is never reparented.
+function InstallGuard()
+    if guarded then return end
+    local frame = _G.ChatFrame1
+    if not frame then return end
+    guarded = true
 
-    local function run()
-        reassertQueued = false
-        if PlayerIsDragging() then return end
-        if not PC.Config.enabled or not PC.Config.positionEnabled then return end
-
-        Position:Apply(nil, true)
-    end
-
-    if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
-        _G.C_Timer.After(0, run)
-    else
-        run()
+    for _, method in ipairs({ "ApplySystemAnchor", "UpdateClampOffsets" }) do
+        if type(frame[method]) == "function" then
+            hooksecurefunc(frame, method, function() Position:Reassert() end)
+        end
     end
 end
 
@@ -263,10 +396,8 @@ end
 -- Learning
 --------------------------------------------------------------------------------
 
--- Read the window's current geometry back into the config. This is what makes
--- the feature usable rather than a coordinate-guessing game: drag the window
--- where you want it, press the button, and the numbers are filled in for you.
--- @return boolean captured
+--- Read the window's current geometry back into the config.
+--- @return boolean captured
 function Position:CaptureCurrent()
     local frame = DockLeader()
     if not frame then return false end
@@ -274,181 +405,91 @@ function Position:CaptureCurrent()
     local point, relativeTo, relativePoint, x, y = frame:GetPoint()
     if not point then return false end
 
-    -- Anchored to something that is not the screen - a dock, a temporary window,
-    -- another addon's holder. Replaying that as an offset from UIParent would put
-    -- the window somewhere it has never been, so the safe answer is to keep what
-    -- was already recorded rather than learn a position we cannot reproduce.
+    -- Anchored to something that is not the screen: an offset from UIParent
+    -- would put the window somewhere it has never been.
     if relativeTo and relativeTo ~= _G.UIParent then return false end
 
     local cfg = PC.Config
     cfg.chatPoint = point
     cfg.chatRelativePoint = relativePoint
-    cfg.chatX = math.floor(x + 0.5)
-    cfg.chatY = math.floor(y + 0.5)
-    cfg.chatWidth = math.floor((frame:GetWidth() or 0) + 0.5)
-    cfg.chatHeight = math.floor((frame:GetHeight() or 0) + 0.5)
+    cfg.chatX = floor(x + 0.5)
+    cfg.chatY = floor(y + 0.5)
+    cfg.chatWidth = floor((frame:GetWidth() or 0) + 0.5)
+    cfg.chatHeight = floor((frame:GetHeight() or 0) + 0.5)
     cfg:Save()
 
+    -- The layout follows, so the next login puts it here too.
+    ScheduleStore()
     return true
 end
 
--- Stop managing the position. The window is left exactly where it is rather
--- than sent back to Blizzard's default - somebody switching this off wants the
--- addon to stop deciding, not to have their chat jump.
+-- Stop managing it. Left exactly where it is: switching this off means stop
+-- deciding, not jump back to Blizzard's spot.
 function Position:Restore()
     placed = false
     pendingCombat = false
 end
 
 function Position:Initialize()
-    -- Placement, not enforcement: the handler runs on every refresh, and Apply
-    -- returns immediately once the window has been placed for the session.
     Frames:RegisterHandler("position", function(frame)
         Position:Apply(frame)
     end, function(frame)
         Position:Restore(frame)
     end)
 
-    ----------------------------------------------------------------------------
-    -- Follow the player rather than fight them
-    --
-    -- Blizzard calls this after a user finishes moving or resizing a chat
-    -- window, including from Edit Mode. Taking the new geometry as the intended
-    -- one means dragging the window is how you move it, and the setting simply
-    -- remembers where you put it.
-    ----------------------------------------------------------------------------
+    -- After a native drag or resize. Not only the leader: the grabber of a
+    -- docked tab resizes the leader and then reports the child.
     if type(_G.FCF_SavePositionAndDimensions) == "function" then
         hooksecurefunc("FCF_SavePositionAndDimensions", function(frame)
-            if placing then return end
-            if not PC.Config.positionEnabled then return end
-
-            -- Never learn from a window that is still being held. The client
-            -- calls this from the drag and resize handlers after it has let go,
-            -- so in the normal case nothing is moving by now - but a third addon
-            -- calling it mid-drag would otherwise write a half-finished position
-            -- into the config as though it were intended.
-            if PlayerIsDragging() then return end
-
-            -- Deliberately NOT "only if this is the dock leader", which is what
-            -- it used to say and which quietly dropped most resizes. The resize
-            -- grabber's OnMouseUp in FloatingChatFrame.xml sizes the leader when
-            -- the window is docked and then reports the *child* whose grabber
-            -- was dragged - so resizing with any tab but the first selected
-            -- arrived here as a non-leader, got dropped, and the next login put
-            -- the old size back. A docked frame's geometry is the leader's, so
-            -- either one is a reason to go and read the leader.
-            if not (Position:IsLeader(frame) or (frame and frame.isDocked)) then
-                return
-            end
-
+            if placing or not PC.Config.positionEnabled or PlayerIsDragging() then return end
+            if not (Position:IsLeader(frame) or (frame and frame.isDocked)) then return end
             Position:CaptureCurrent()
         end)
     end
 
-    ----------------------------------------------------------------------------
-    -- Edit Mode
-    --
-    -- Edit Mode reasserts chat window geometry, clamping margin included, when
-    -- it opens and when a layout is applied. Clearing on the way in matters
-    -- most: it means the drag itself is unclamped, so the window goes where you
-    -- want it rather than where the margin allows.
-    ----------------------------------------------------------------------------
     local function ClearClamps()
-        if not PC.Config.enabled then return end
-        if not PC.Config.edgeToEdge then return end
+        if not PC.Config.enabled or not PC.Config.edgeToEdge then return end
         if not PC.Skin or not PC.Skin.ClearClampFor then return end
-
-        Frames:Each(function(frame)
-            PC.Skin.ClearClampFor(frame)
-        end)
+        Frames:Each(function(frame) PC.Skin.ClearClampFor(frame) end)
     end
 
-    ----------------------------------------------------------------------------
-    -- Leaving Edit Mode
-    --
-    -- Learn where the window ended up. Not put it back: that was tried, and it
-    -- re-applied a config that had never heard about the move, which is exactly
-    -- how a window arranged in Edit Mode snapped home as you closed it.
-    --
-    -- The gap is that Edit Mode does not go through
-    -- FCF_SavePositionAndDimensions. FrameXML calls that from two places, both
-    -- of them the native drag, so the hook keeping this config in step never
-    -- hears about an Edit Mode move and every later re-assert is stale.
-    --
-    -- On the way out only: Edit Mode moves chat windows to its own layout when
-    -- it opens and when a layout is applied, and capturing those would overwrite
-    -- the player's position with one Edit Mode chose.
-    ----------------------------------------------------------------------------
+    -- Leaving Edit Mode: learn where the window ended up, a frame later once it
+    -- has settled. Edit Mode moves never pass through
+    -- FCF_SavePositionAndDimensions. `editing` stays set until the read, so
+    -- nothing re-asserts the old spot over the new one.
     local function LearnFromEditMode()
-        -- A frame later, so the geometry has settled out of whatever Edit Mode
-        -- does on its way down before it is read.
-        --
-        -- `editing` is cleared here rather than the instant Edit Mode closed,
-        -- which is what keeps the two halves in order: until the new position
-        -- has been read, PlayerIsDragging still answers yes and nothing can
-        -- re-assert the old one over it.
-        local function finish()
+        _G.C_Timer.After(0, function()
             if PC.Config.enabled and PC.Config.positionEnabled then
                 Position:CaptureCurrent()
             end
             editing = false
-        end
-
-        if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
-            _G.C_Timer.After(0, finish)
-        else
-            finish()
-        end
+        end)
     end
 
-    PeaversCommons.Events:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", ClearClamps)
+    PeaversCommons.Events:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", function()
+        ClearClamps()
+        Position:Reassert()
+    end)
 
     if _G.EventRegistry and type(_G.EventRegistry.RegisterCallback) == "function" then
         for _, moment in ipairs({ "EditMode.Enter", "EditMode.Exit" }) do
-            pcall(_G.EventRegistry.RegisterCallback, _G.EventRegistry,
-                moment, ClearClamps, Position)
+            pcall(_G.EventRegistry.RegisterCallback, _G.EventRegistry, moment, ClearClamps, Position)
         end
-
         pcall(_G.EventRegistry.RegisterCallback, _G.EventRegistry,
             "EditMode.Enter", function() editing = true end, Position)
-
         pcall(_G.EventRegistry.RegisterCallback, _G.EventRegistry,
             "EditMode.Exit", LearnFromEditMode, Position)
     end
 
-    ----------------------------------------------------------------------------
-    -- The events the client re-lays its chat windows on
-    --
-    -- This replaces a single look a second after login, which was a guess at
-    -- when the client would have finished and was visible as the window jumping
-    -- about once the world had loaded. These are the moments it actually moves
-    -- things, so the window is put back as part of the same frame rather than a
-    -- second later where somebody can watch it happen.
-    --
-    -- UPDATE_CHAT_WINDOWS and UPDATE_FLOATING_CHAT_WINDOWS are the client
-    -- re-reading its own chat settings, at login and whenever they change.
-    -- PLAYER_ENTERING_WORLD covers a reload and every zone in after it.
-    --
-    -- All three go through Reassert, which coalesces them to one pass, does
-    -- nothing while the window is in the player's hand, and re-applies what the
-    -- config has already learned rather than anything older.
-    ----------------------------------------------------------------------------
-    for _, event in ipairs({
-        "PLAYER_ENTERING_WORLD",
-        "UPDATE_CHAT_WINDOWS",
-        "UPDATE_FLOATING_CHAT_WINDOWS",
-    }) do
-        PeaversCommons.Events:RegisterEvent(event, function()
-            Position:Reassert()
-        end)
+    -- The moments the client re-lays its chat windows out.
+    for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_CHAT_WINDOWS", "UPDATE_FLOATING_CHAT_WINDOWS" }) do
+        PeaversCommons.Events:RegisterEvent(event, function() Position:Reassert() end)
     end
 
-    -- Deferred work from a fight. Cheap: returns immediately unless something
-    -- actually asked to be moved.
     PeaversCommons.Events:RegisterEvent("PLAYER_REGEN_ENABLED", function()
         if not pendingCombat then return end
         pendingCombat = false
-        Position:Apply()
+        Position:Apply(nil, true)
         ClearClamps()
     end)
 end
